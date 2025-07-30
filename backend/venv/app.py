@@ -74,6 +74,62 @@ def produtos_endpoint(): # Mudei o nome da função para ser mais genérico
             return jsonify({'erro': str(e)}), 500
 
 
+# ... (código anterior da rota /api/produtos)
+
+
+# ... (código anterior da rota /api/produtos)
+
+
+# --- ROTA PARA UM PRODUTO ESPECÍFICO (GET, PUT, DELETE) ---
+# Adicionamos 'PUT' à lista de métodos permitidos
+@app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT'])
+def produto_por_id_endpoint(id_produto):
+    # Lógica para o método GET (Ler)
+    if request.method == 'GET':
+        try:
+            produto = Produto.query.get_or_404(id_produto)
+            produto_json = {
+                'id': produto.id_produto,
+                'nome': produto.nome,
+                'codigo': produto.codigo.strip(),
+                'descricao': produto.descricao,
+                'preco': str(produto.preco)
+            }
+            return jsonify(produto_json), 200
+        except Exception as e:
+            return jsonify({'erro': str(e)}), 500
+
+    # Lógica para o método PUT (Atualizar)
+    if request.method == 'PUT':
+        try:
+            # Busca o produto que queremos editar no banco de dados
+            produto_para_atualizar = Produto.query.get_or_404(id_produto)
+            # Pega nos novos dados enviados no corpo do pedido
+            dados = request.get_json()
+
+            # Atualiza cada campo do objeto com os novos dados
+            produto_para_atualizar.nome = dados['nome']
+            produto_para_atualizar.codigo = dados['codigo']
+            produto_para_atualizar.descricao = dados.get('descricao')
+            produto_para_atualizar.preco = dados['preco']
+            produto_para_atualizar.codigoB = dados.get('codigoB')
+            produto_para_atualizar.codigoC = dados.get('codigoC')
+
+            # Confirma a alteração no banco de dados
+            db.session.commit()
+
+            return jsonify({'mensagem': 'Produto atualizado com sucesso!'}), 200
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'erro': str(e)}), 500
+
+
+# --- Bloco para executar a aplicação ---
+# ... (resto do ficheiro)
+
+
+
 # --- Bloco para executar a aplicação ---
 if __name__ == '__main__':
     app.run(debug=True)
