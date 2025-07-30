@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Cria a aplicação Flask
 app = Flask(__name__)
@@ -58,6 +59,25 @@ class Natureza(db.Model):
     
     # Define o relacionamento com Produto
     produtos = db.relationship('Produto', secondary=produto_natureza, back_populates='naturezas')
+    
+    
+class Usuario(db.Model):
+    __tablename__ = 'usuario'
+    id_usuario = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False)
+    login = db.Column(db.String(100), unique=True, nullable=False)
+    senha_hash = db.Column(db.String(255), nullable=False)
+    permissao = db.Column(db.String(100), nullable=False) # 'Administrador' ou 'Usuario'
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Método para definir a senha (fazendo o hash)
+    def set_password(self, senha):
+        self.senha_hash = generate_password_hash(senha)
+
+    # Método para verificar a senha
+    def check_password(self, senha):
+        return check_password_hash(self.senha_hash, senha)
+    
 
 # --- ROTA PRINCIPAL: /api/produtos (Para listar todos e criar um novo) ---
 @app.route('/api/produtos', methods=['GET', 'POST'])
@@ -245,6 +265,54 @@ def natureza_por_id_endpoint(id_natureza):
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+
+
+# --- ROTAS DA API PARA USUÁRIOS ---
+@app.route('/api/usuarios', methods=['GET', 'POST'])
+def usuarios_endpoint():
+    # Rota para listar todos os usuários (sem a senha, claro)
+    if request.method == 'GET':
+        try:
+            usuarios = Usuario.query.all()
+            usuarios_json = []
+            for u in usuarios:
+                usuarios_json.append({
+                    'id': u.id_usuario,
+                    'nome': u.nome,
+                    'login': u.login,
+                    'permissao': u.permissao,
+                    'ativo': u.ativo
+                })
+            return jsonify(usuarios_json), 200
+        except Exception as e:
+            return jsonify({'erro': str(e)}), 500
+
+    # Rota para cadastrar um novo usuário
+    elif request.method == 'POST':
+        # TODO: Proteger esta rota para que apenas administradores possam criar usuários.
+        try:
+            dados = request.get_json()
+            
+            # Validação básica
+            if 'login' not in dados or 'senha' not in dados or 'nome' not in dados or 'permissao' not in dados:
+                return jsonify({'erro': 'Dados incompletos'}), 400
+
+            novo_usuario = Usuario(
+                nome=dados['nome'],
+                login=dados['login'],
+                permissao=dados['permissao']
+            )
+            # Usa o método que criámos para guardar a senha com hash
+            novo_usuario.set_password(dados['senha'])
+            
+            db.session.add(novo_usuario)
+            db.session.commit()
+            
+            return jsonify({'mensagem': 'Usuário criado com sucesso!'}), 201
+
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'erro': str(e)}), 500
 
 
 # --- Bloco para executar a aplicação ---
