@@ -6,6 +6,8 @@ from flask_jwt_extended import get_jwt_identity
 from flask_jwt_extended import jwt_required
 from flask_jwt_extended import JWTManager
 from flask_jwt_extended import get_jwt
+from datetime import datetime
+from sqlalchemy import case # Usaremos para o cálculo de saldo
 
 # Cria a aplicação Flask
 app = Flask(__name__)
@@ -69,6 +71,22 @@ class Natureza(db.Model):
     
     # Define o relacionamento com Produto
     produtos = db.relationship('Produto', secondary=produto_natureza, back_populates='naturezas')
+    
+
+# --- MAPEAMENTO DA TABELA MOVIMENTACAO_ESTOQUE (MODELO) ---
+class MovimentacaoEstoque(db.Model):
+    __tablename__ = 'mov_estoque'
+    id_movimentacao = db.Column(db.Integer, primary_key=True)
+    id_produto = db.Column(db.Integer, db.ForeignKey('produto.Id_produto'), nullable=False)
+    id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
+    data_hora = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    quantidade = db.Column(db.Integer, nullable=False)
+    tipo = db.Column(db.Enum("Entrada", "Saida"), nullable=False)
+    motivo_saida = db.Column(db.String(200))
+
+    # Define os relacionamentos para facilitar as consultas
+    produto = db.relationship('Produto')
+    usuario = db.relationship('Usuario')    
     
     
 class Usuario(db.Model):
@@ -275,6 +293,83 @@ def natureza_por_id_endpoint(id_natureza):
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+    
+    
+    
+    # ... (depois dos endpoints de Natureza)
+
+# --- ROTAS DA API PARA MOVIMENTAÇÃO DE ESTOQUE ---
+
+# Endpoint para CALCULAR e RETORNAR o saldo atual de um produto
+@app.route('/api/produtos/<int:id_produto>/estoque', methods=['GET'])
+@jwt_required()
+def get_saldo_estoque(id_produto):
+    try:
+        # Fórmula para calcular o saldo: (SOMA de Entradas) - (SOMA de Saídas)
+        saldo_calculado = db.session.query(
+            db.func.sum(
+                case(
+                    (MovimentacaoEstoque.tipo == 'Entrada', MovimentacaoEstoque.quantidade),
+                    (MovimentacaoEstoque.tipo == 'Saida', -MovimentacaoEstoque.quantidade)
+                )
+            )
+        ).filter(MovimentacaoEstoque.id_produto == id_produto).scalar() or 0
+        
+        return jsonify({'id_produto': id_produto, 'saldo_atual': saldo_calculado}), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+# Endpoint para REGISTRAR uma ENTRADA de estoque
+@app.route('/api/estoque/entrada', methods=['POST'])
+@jwt_required()
+def registrar_entrada():
+    try:
+        dados = request.get_json()
+        id_usuario_logado = get_jwt_identity() # Pega o ID do usuário do token JWT
+
+        nova_entrada = MovimentacaoEstoque(
+            id_produto=dados['id_produto'],
+            quantidade=dados['quantidade'],
+            id_usuario=id_usuario_logado,
+            tipo='Entrada'
+        )
+        db.session.add(nova_entrada)
+        db.session.commit()
+        return jsonify({'mensagem': 'Entrada de estoque registada com sucesso!'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+# Endpoint para REGISTRAR uma SAÍDA de estoque
+@app.route('/api/estoque/saida', methods=['POST'])
+@jwt_required()
+def registrar_saida():
+    try:
+        dados = request.get_json()
+        id_produto = dados['id_produto']
+        quantidade_saida = dados['quantidade']
+        
+        # --- LÓGICA DE NEGÓCIO CRÍTICA: VERIFICAR SALDO ---
+        saldo_atual = db.session.query(db.func.sum(case((MovimentacaoEstoque.tipo == 'Entrada', MovimentacaoEstoque.quantidade), else_=-MovimentacaoEstoque.quantidade))).filter_by(id_produto=id_produto).scalar() or 0
+        
+        if saldo_atual < quantidade_saida:
+            return jsonify({'erro': f'Estoque insuficiente. Saldo atual: {saldo_atual}'}), 400
+
+        id_usuario_logado = get_jwt_identity()
+        nova_saida = MovimentacaoEstoque(
+            id_produto=id_produto,
+            quantidade=quantidade_saida,
+            id_usuario=id_usuario_logado,
+            tipo='Saida',
+            motivo_saida=dados.get('motivo_saida')
+        )
+        db.session.add(nova_saida)
+        db.session.commit()
+        return jsonify({'mensagem': 'Saída de estoque registada com sucesso!'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
 
 
 # --- ROTAS DA API PARA USUÁRIOS ---
@@ -355,7 +450,7 @@ def login_endpoint():
             # A identidade pode ser qualquer coisa, mas o ID é uma boa prática.
             # As 'additional_claims' permitem-nos guardar informação extra no token.
             access_token = create_access_token(
-                identity=usuario.id_usuario, 
+                identity=str(usuario.id_usuario), 
                 additional_claims={'permissao': usuario.permissao}
             )
             # Retorna o token para o cliente
