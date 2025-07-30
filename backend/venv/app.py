@@ -13,6 +13,21 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 
+# Tabela de associação para o relacionamento N-N entre Produto e Fornecedor
+produto_fornecedor = db.Table('produto_fornecedor',
+    db.Column('FK_PRODUTO_Id_produto', db.Integer, db.ForeignKey('produto.Id_produto'), primary_key=True),
+    db.Column('FK_FORNECEDOR_id_fornecedor', db.Integer, db.ForeignKey('fornecedor.id_fornecedor'), primary_key=True)
+)
+
+produto_natureza = db.Table('produto_natureza',
+    db.Column('fk_PRODUTO_Id_produto', db.Integer, db.ForeignKey('produto.Id_produto'), primary_key=True),
+    db.Column('fk_NATUREZA_id_natureza', db.Integer, db.ForeignKey('natureza.id_natureza'), primary_key=True)
+)
+
+
+
+
+
 # --- MAPEAMENTO DA TABELA PRODUTO (MODELO) ---
 class Produto(db.Model):
     __tablename__ = 'produto'
@@ -23,7 +38,26 @@ class Produto(db.Model):
     preco = db.Column('Preco', db.Numeric(10, 2), nullable=False)
     codigoB = db.Column('CodigoB', db.String(20))
     codigoC = db.Column('CodigoC', db.String(20))
+    fornecedores = db.relationship('Fornecedor', secondary=produto_fornecedor, back_populates='produtos')
+    naturezas = db.relationship('Natureza', secondary=produto_natureza, back_populates='produtos')
 
+    
+    
+class Fornecedor(db.Model):
+    __tablename__ = 'fornecedor'
+    id_fornecedor = db.Column(db.Integer, primary_key=True)
+    nome = db.Column('Nome', db.String(50), unique=True, nullable=False)
+     # Define o relacionamento com Produto
+    produtos = db.relationship('Produto', secondary=produto_fornecedor, back_populates='fornecedores')
+
+
+class Natureza(db.Model):
+    __tablename__ = 'natureza'
+    id_natureza = db.Column(db.Integer, primary_key=True)
+    nome = db.Column('nome', db.String(100), unique=True, nullable=False)
+    
+    # Define o relacionamento com Produto
+    produtos = db.relationship('Produto', secondary=produto_natureza, back_populates='naturezas')
 
 # --- ROTA PRINCIPAL: /api/produtos (Para listar todos e criar um novo) ---
 @app.route('/api/produtos', methods=['GET', 'POST'])
@@ -110,6 +144,107 @@ def produto_por_id_endpoint(id_produto):
         except Exception as e:
             db.session.rollback()
             return jsonify({'erro': str(e)}), 500
+
+
+# ... (código anterior)
+
+# --- ROTAS DA API PARA FORNECEDORES ---
+@app.route('/api/fornecedores', methods=['GET', 'POST'])
+def fornecedores_endpoint():
+    if request.method == 'GET':
+        try:
+            fornecedores = Fornecedor.query.all()
+            fornecedores_json = [{'id': f.id_fornecedor, 'nome': f.nome} for f in fornecedores]
+            return jsonify(fornecedores_json), 200
+        except Exception as e:
+            return jsonify({'erro': str(e)}), 500
+
+    elif request.method == 'POST':
+        try:
+            dados = request.get_json()
+            novo_fornecedor = Fornecedor(nome=dados['nome'])
+            db.session.add(novo_fornecedor)
+            db.session.commit()
+            return jsonify({'mensagem': 'Fornecedor adicionado com sucesso!'}), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/fornecedores/<int:id_fornecedor>', methods=['PUT', 'DELETE'])
+def fornecedor_por_id_endpoint(id_fornecedor):
+    try:
+        fornecedor = Fornecedor.query.get_or_404(id_fornecedor)
+
+        if request.method == 'PUT':
+            # ... (a lógica de PUT continua a mesma)
+            dados = request.get_json()
+            fornecedor.nome = dados['nome']
+            db.session.commit()
+            return jsonify({'mensagem': 'Fornecedor atualizado com sucesso!'}), 200
+
+        elif request.method == 'DELETE':
+            # --- A LÓGICA DO DESAFIO ---
+            # Graças ao relacionamento que criámos, podemos verificar se a lista de produtos não está vazia.
+            if fornecedor.produtos:
+                return jsonify({'erro': 'Este fornecedor não pode ser excluído pois está associado a um ou mais produtos.'}), 400 # 400 = Bad Request
+
+            # Se a lista estiver vazia, podemos apagar com segurança.
+            db.session.delete(fornecedor)
+            db.session.commit()
+            return jsonify({'mensagem': 'Fornecedor excluído com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+
+# ... (código anterior)
+
+# --- ROTAS DA API PARA NATUREZAS ---
+@app.route('/api/naturezas', methods=['GET', 'POST'])
+def naturezas_endpoint():
+    if request.method == 'GET':
+        try:
+            naturezas = Natureza.query.all()
+            naturezas_json = [{'id': n.id_natureza, 'nome': n.nome} for n in naturezas]
+            return jsonify(naturezas_json), 200
+        except Exception as e:
+            return jsonify({'erro': str(e)}), 500
+
+    elif request.method == 'POST':
+        try:
+            dados = request.get_json()
+            nova_natureza = Natureza(nome=dados['nome'])
+            db.session.add(nova_natureza)
+            db.session.commit()
+            return jsonify({'mensagem': 'Natureza adicionada com sucesso!'}), 201
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/naturezas/<int:id_natureza>', methods=['PUT', 'DELETE'])
+def natureza_por_id_endpoint(id_natureza):
+    try:
+        natureza = Natureza.query.get_or_404(id_natureza)
+
+        if request.method == 'PUT':
+            dados = request.get_json()
+            natureza.nome = dados['nome']
+            db.session.commit()
+            return jsonify({'mensagem': 'Natureza atualizada com sucesso!'}), 200
+
+        elif request.method == 'DELETE':
+            # Verifica se a natureza está em uso antes de excluir
+            if natureza.produtos:
+                return jsonify({'erro': 'Esta natureza não pode ser excluída pois está associada a um ou mais produtos.'}), 400
+
+            db.session.delete(natureza)
+            db.session.commit()
+            return jsonify({'mensagem': 'Natureza excluída com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
 
 
 # --- Bloco para executar a aplicação ---
