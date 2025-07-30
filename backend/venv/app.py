@@ -1,4 +1,3 @@
-# 1. Importar 'request' junto com os outros
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 
@@ -6,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 app = Flask(__name__)
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
+# Certifique-se de que a senha aqui está correta
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:senha123@localhost/estoque_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -13,7 +13,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 
-# --- MAPEAMENTO DAS TABELAS (MODELOS) ---
+# --- MAPEAMENTO DA TABELA PRODUTO (MODELO) ---
 class Produto(db.Model):
     __tablename__ = 'produto'
     id_produto = db.Column('Id_produto', db.Integer, primary_key=True)
@@ -25,20 +25,20 @@ class Produto(db.Model):
     codigoC = db.Column('CodigoC', db.String(20))
 
 
-# --- ROTAS DA API ---
-# 2. Atualizar a rota para aceitar GET e POST
+# --- ROTA PRINCIPAL: /api/produtos (Para listar todos e criar um novo) ---
 @app.route('/api/produtos', methods=['GET', 'POST'])
-def produtos_endpoint(): # Mudei o nome da função para ser mais genérico
-    # 3. Adicionar a lógica para diferenciar os métodos
+def produtos_endpoint():
+    # Se o pedido for GET, retorna a lista de produtos
     if request.method == 'GET':
         try:
             produtos_db = Produto.query.all()
+            # LÓGICA CORRIGIDA: Criar a lista produtos_json
             produtos_json = []
             for produto in produtos_db:
                 produtos_json.append({
                     'id': produto.id_produto,
                     'nome': produto.nome,
-                    'codigo': produto.codigo.strip(), # Adicionado .strip() para remover espaços do tipo CHAR
+                    'codigo': produto.codigo.strip(),
                     'descricao': produto.descricao,
                     'preco': str(produto.preco)
                 })
@@ -46,45 +46,29 @@ def produtos_endpoint(): # Mudei o nome da função para ser mais genérico
         except Exception as e:
             return jsonify({'erro': str(e)}), 500
 
-    if request.method == 'POST':
+    # Se o pedido for POST, cria um novo produto
+    elif request.method == 'POST':
         try:
-            # Pega nos dados JSON enviados no corpo do pedido
             dados = request.get_json()
-
-            # Cria um novo objeto Produto com os dados recebidos
             novo_produto = Produto(
                 nome=dados['nome'],
                 codigo=dados['codigo'],
-                descricao=dados.get('descricao'), # .get() é mais seguro se o campo for opcional
+                descricao=dados.get('descricao'),
                 preco=dados['preco'],
                 codigoB=dados.get('codigoB'),
                 codigoC=dados.get('codigoC')
             )
-
-            # Adiciona o novo produto à sessão do banco de dados
             db.session.add(novo_produto)
-            # Confirma (salva) a transação
             db.session.commit()
-
-            # Retorna uma mensagem de sucesso
-            return jsonify({'mensagem': 'Produto adicionado com sucesso!'}), 201 # 201 = Created
-
+            return jsonify({'mensagem': 'Produto adicionado com sucesso!'}), 201
         except Exception as e:
-            db.session.rollback() # Desfaz a transação em caso de erro
+            db.session.rollback()
             return jsonify({'erro': str(e)}), 500
 
-
-# ... (código anterior da rota /api/produtos)
-
-
-# ... (código anterior da rota /api/produtos)
-
-
-# --- ROTA PARA UM PRODUTO ESPECÍFICO (GET, PUT, DELETE) ---
-# Adicionamos 'PUT' à lista de métodos permitidos
-@app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT'])
+# --- ROTA INDIVIDUAL: /api/produtos/<id> (Para ler, editar e apagar um produto) ---
+@app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT', 'DELETE'])
 def produto_por_id_endpoint(id_produto):
-    # Lógica para o método GET (Ler)
+    # Se o pedido for GET, retorna um único produto
     if request.method == 'GET':
         try:
             produto = Produto.query.get_or_404(id_produto)
@@ -98,36 +82,34 @@ def produto_por_id_endpoint(id_produto):
             return jsonify(produto_json), 200
         except Exception as e:
             return jsonify({'erro': str(e)}), 500
-
-    # Lógica para o método PUT (Atualizar)
-    if request.method == 'PUT':
+    
+    # Se o pedido for PUT, atualiza um produto
+    elif request.method == 'PUT':
         try:
-            # Busca o produto que queremos editar no banco de dados
             produto_para_atualizar = Produto.query.get_or_404(id_produto)
-            # Pega nos novos dados enviados no corpo do pedido
             dados = request.get_json()
-
-            # Atualiza cada campo do objeto com os novos dados
             produto_para_atualizar.nome = dados['nome']
             produto_para_atualizar.codigo = dados['codigo']
             produto_para_atualizar.descricao = dados.get('descricao')
             produto_para_atualizar.preco = dados['preco']
             produto_para_atualizar.codigoB = dados.get('codigoB')
             produto_para_atualizar.codigoC = dados.get('codigoC')
-
-            # Confirma a alteração no banco de dados
             db.session.commit()
-
             return jsonify({'mensagem': 'Produto atualizado com sucesso!'}), 200
-
         except Exception as e:
             db.session.rollback()
             return jsonify({'erro': str(e)}), 500
-
-
-# --- Bloco para executar a aplicação ---
-# ... (resto do ficheiro)
-
+    
+    # Se o pedido for DELETE, apaga um produto
+    elif request.method == 'DELETE':
+        try:
+            produto_para_excluir = Produto.query.get_or_404(id_produto)
+            db.session.delete(produto_para_excluir)
+            db.session.commit()
+            return jsonify({'mensagem': 'Produto excluído com sucesso!'}), 200
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'erro': str(e)}), 500
 
 
 # --- Bloco para executar a aplicação ---
