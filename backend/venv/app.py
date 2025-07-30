@@ -1,9 +1,19 @@
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import create_access_token
+from flask_jwt_extended import get_jwt_identity
+from flask_jwt_extended import jwt_required
+from flask_jwt_extended import JWTManager
+from flask_jwt_extended import get_jwt
 
 # Cria a aplicação Flask
 app = Flask(__name__)
+
+# --- CONFIGURAÇÃO DO JWT (JSON Web Token) ---
+# Escolha uma frase secreta forte e única
+app.config["JWT_SECRET_KEY"] = "bolo-de-cenoura-com-chocolate" 
+jwt = JWTManager(app)
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
 # Certifique-se de que a senha aqui está correta
@@ -289,8 +299,19 @@ def usuarios_endpoint():
 
     # Rota para cadastrar um novo usuário
     elif request.method == 'POST':
-        # TODO: Proteger esta rota para que apenas administradores possam criar usuários.
+        # Esta linha verifica se há um token JWT válido no pedido.
+        # Se não houver, o código abaixo não será executado.
+        jwt_required()
+        
+        # TODO: Adicionar verificação de permissão de Administrador
         try:
+            # Pega nas informações extras que guardámos no token
+            claims = get_jwt()
+            # Verifica se a permissão é de Administrador
+            if claims.get('permissao') != 'Administrador':
+                return jsonify({"erro": "Acesso negado: permissão de Administrador necessária."}), 403 # 403 = Forbidden
+
+            # Se a verificação passar, o resto do código é executado
             dados = request.get_json()
             
             # Validação básica
@@ -314,7 +335,40 @@ def usuarios_endpoint():
             db.session.rollback()
             return jsonify({'erro': str(e)}), 500
 
+# ... (depois dos endpoints de Usuários)
 
+# --- ROTA PARA LOGIN ---
+@app.route('/api/login', methods=['POST'])
+def login_endpoint():
+    try:
+        # Pega no login e senha enviados no corpo do pedido
+        dados = request.get_json()
+        login = dados.get('login', None)
+        senha = dados.get('senha', None)
+
+        # Busca o usuário no banco de dados pelo login e verifica se ele está ativo
+        usuario = Usuario.query.filter_by(login=login, ativo=True).first()
+
+        # Verifica se o usuário existe E se a senha está correta
+        if usuario and usuario.check_password(senha):
+            # Cria o token de acesso com a identidade do usuário e a sua permissão
+            # A identidade pode ser qualquer coisa, mas o ID é uma boa prática.
+            # As 'additional_claims' permitem-nos guardar informação extra no token.
+            access_token = create_access_token(
+                identity=usuario.id_usuario, 
+                additional_claims={'permissao': usuario.permissao}
+            )
+            # Retorna o token para o cliente
+            return jsonify(access_token=access_token), 200
+        else:
+            # Se as credenciais estiverem erradas, retorna um erro de não autorizado
+            return jsonify({"erro": "Credenciais inválidas"}), 401
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+# ... (resto do ficheiro)
 # --- Bloco para executar a aplicação ---
 if __name__ == '__main__':
     app.run(debug=True)
