@@ -2,14 +2,12 @@ import sys
 import requests
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit,
-    QPushButton, QVBoxLayout, QMessageBox, QMainWindow, QHBoxLayout
+    QPushButton, QVBoxLayout, QMessageBox, QMainWindow, QHBoxLayout,
+    QStackedWidget, # <-- Adicione aqui
+    QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
 )
 from PySide6.QtGui import QPixmap, QAction
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
-    # ...
-    QSizePolicy
-)
 # ==============================================================================
 # VARIÁVEIS GLOBAIS
 # ==============================================================================
@@ -88,68 +86,72 @@ class JanelaLogin(QWidget):
 # ==============================================================================
 # CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
+# ==============================================================================
+# CLASSE DA JANELA PRINCIPAL (COM ESTILOS)
+# ==============================================================================
 class JanelaPrincipal(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Sistema de Gestão de Estoque")
         self.resize(1280, 720)
-        
+
         # --- APLICAÇÃO DE ESTILOS (QSS) ---
+        # Este bloco de texto define a aparência de vários componentes da janela.
         self.setStyleSheet("""
-        /* Estilo geral da janela */
-        QMainWindow {
-            background-color: #f2f2f2; /* Um cinza bem claro */
-    }
+            /* Estilo geral da janela e do widget central */
+            QMainWindow, QWidget {
+                background-color: #f5f5f5; /* Um cinza claro para o fundo */
+            }
 
-        /* Estilo do painel lateral */
-        #painelLateral {
-            background-color: #e3e3e3; /* Um cinza um pouco mais escuro */
-    }
+            /* Estilo do painel lateral */
+            #painelLateral {
+                background-color: #e0e0e0; /* Um cinza um pouco mais escuro */
+            }
 
-        /* Estilo dos botões DENTRO do painel lateral */
-        #painelLateral QPushButton {
-            background-color: #dcdcdc;
-            color: #333;
-            border: 1px solid #c0c0c0;
-            border-radius: 5px;
-            padding: 10px;
-            font-size: 16px;
-            text-align: left; /* Alinha o texto à esquerda */
-    }
+            /* Estilo dos botões DENTRO do painel lateral */
+            #painelLateral QPushButton {
+                background-color: #e0e0e0;
+                color: #333;
+                border: none; /* Sem borda para um look mais limpo */
+                border-radius: 5px;
+                padding: 12px;
+                font-size: 16px;
+                text-align: left; /* Alinha o texto à esquerda */
+            }
 
-        #painelLateral QPushButton:hover {
-        background-color: #cce7ff; /* Um azul claro ao passar o mouse */
-        border: 1px solid #0078d7;
-    }
-""")
-
+            /* Efeito ao passar o mouse por cima do botão */
+            #painelLateral QPushButton:hover {
+                background-color: #cce7ff;
+            }
+            
+            /* Estilo para o botão selecionado (ainda não implementado, mas útil para o futuro) */
+            #painelLateral QPushButton:checked {
+                background-color: #0078d7;
+                color: white;
+            }
+            
+            /* Estilo da Barra de Menus */
+            QMenuBar {
+                background-color: #dcdcdc;
+                color: #333;
+            }
+        """)
 
         # --- BARRA DE MENUS ---
         menu_bar = self.menuBar()
-        
-        # Menu Arquivo
         menu_arquivo = menu_bar.addMenu("&Arquivo")
         acao_sair = QAction("Sair", self)
-        acao_sair.triggered.connect(self.close) # Conecta a ação para fechar a janela
+        acao_sair.triggered.connect(self.close)
         menu_arquivo.addAction(acao_sair)
-
-        # Menu Cadastros
         menu_cadastros = menu_bar.addMenu("&Cadastros")
-        menu_cadastros.addAction("Produtos...")
-        menu_cadastros.addAction("Fornecedores...")
-        menu_cadastros.addAction("Naturezas...")
-        
-        # TODO: Adicionar lógica para mostrar este menu apenas para Admins
-        menu_cadastros.addSeparator()
-        menu_cadastros.addAction("Usuários...")
+        self.acao_produtos = QAction("Produtos...", self) # TORNANDO A AÇÃO UM ATRIBUTO
+        menu_cadastros.addAction(self.acao_produtos)
+        # ... (pode adicionar as outras ações do menu aqui se precisar conectá-las)
 
-        # Menu Estoque
-        menu_estoque = menu_bar.addMenu("&Estoque")
-        menu_estoque.addAction("Visualizar Estoque...")
-        menu_estoque.addAction("Entrada Rápida por Código...")
-        
-        # --- LAYOUT PRINCIPAL (HORIZONTAL) ---
-        layout_principal = QHBoxLayout()
+        # --- LAYOUT GERAL E WIDGET CENTRAL ---
+        widget_central = QWidget()
+        self.setCentralWidget(widget_central)
+        layout_principal = QHBoxLayout(widget_central)
 
         # --- PAINEL DE NAVEGAÇÃO LATERAL ---
         painel_lateral = QWidget()
@@ -159,41 +161,103 @@ class JanelaPrincipal(QMainWindow):
         layout_painel_lateral.setAlignment(Qt.AlignTop)
 
         # Botões do painel lateral
-        btn_produtos = QPushButton("Produtos")
-        btn_estoque = QPushButton("Estoque")
-        btn_fornecedores = QPushButton("Fornecedores")
-        btn_naturezas = QPushButton("Naturezas")
-        btn_usuarios = QPushButton("Usuários")
-        
-        
-        
-        # Definimos que os botões podem expandir verticalmente
-        btn_produtos.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        btn_estoque.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        btn_fornecedores.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        btn_naturezas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        btn_usuarios.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # TORNANDO OS BOTÕES ATRIBUTOS DA CLASSE com 'self.'
+        self.btn_dashboard = QPushButton("Dashboard")
+        self.btn_produtos = QPushButton("Produtos")
+        self.btn_estoque = QPushButton("Estoque")
+        self.btn_fornecedores = QPushButton("Fornecedores")
+        self.btn_naturezas = QPushButton("Naturezas")
+        self.btn_usuarios = QPushButton("Usuários")
 
-        layout_painel_lateral.addWidget(btn_produtos)
-        layout_painel_lateral.addWidget(btn_estoque)
-        layout_painel_lateral.addWidget(btn_fornecedores)
-        layout_painel_lateral.addWidget(btn_naturezas)
-        layout_painel_lateral.addWidget(btn_usuarios)
+        layout_painel_lateral.addWidget(self.btn_dashboard)
+        layout_painel_lateral.addWidget(self.btn_produtos)
+        layout_painel_lateral.addWidget(self.btn_estoque)
+        layout_painel_lateral.addWidget(self.btn_fornecedores)
+        layout_painel_lateral.addWidget(self.btn_naturezas)
+        layout_painel_lateral.addWidget(self.btn_usuarios)
+        layout_painel_lateral.addStretch(1)
 
         layout_principal.addWidget(painel_lateral)
-        layout_painel_lateral.addStretch(1)
-        # --- ÁREA DE CONTEÚDO PRINCIPAL ---
-        self.area_de_conteudo = QWidget()
-        layout_principal.addWidget(self.area_de_conteudo)
 
-        # Widget central para conter o layout principal
-        widget_central = QWidget()
-        widget_central.setLayout(layout_principal)
-        self.setCentralWidget(widget_central)
+        # --- ÁREA DE CONTEÚDO (USANDO QStackedWidget) ---
+        self.stacked_widget = QStackedWidget()
+        layout_principal.addWidget(self.stacked_widget)
+
+        self.tela_dashboard = QLabel("Bem-vindo ao Sistema!\n\nSelecione uma opção no menu lateral para começar.")
+        self.tela_dashboard.setAlignment(Qt.AlignCenter)
+        self.tela_dashboard.setStyleSheet("font-size: 18px; color: #555;")
+        self.tela_produtos = ProdutosWidget()
+
+        self.stacked_widget.addWidget(self.tela_dashboard)
+        self.stacked_widget.addWidget(self.tela_produtos)
+
+        # --- CONEXÃO DOS SINAIS AOS SLOTS ---
+        # Agora conectamos os atributos 'self.btn...'
+        self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
+        self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
+        self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
 
         # --- BARRA DE STATUS ---
-        self.statusBar().showMessage("Bem-vindo! Usuário logado: [Nome do Usuário]")
+        self.statusBar().showMessage("Pronto.")
+ 
+            # --- FUNÇÕES (SLOTS) PARA NAVEGAÇÃO ---
+    def mostrar_tela_dashboard(self):
+        # Diz ao QStackedWidget para mostrar a tela_dashboard
+        self.stacked_widget.setCurrentWidget(self.tela_dashboard)
 
+    def mostrar_tela_produtos(self):
+        # Diz ao QStackedWidget para mostrar a tela_produtos
+        self.stacked_widget.setCurrentWidget(self.tela_produtos)
+
+
+
+class ProdutosWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+
+        self.layout = QVBoxLayout(self)
+
+        # Título da tela
+        self.titulo = QLabel("Gestão de Produtos")
+        self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
+
+        # Tabela para exibir os produtos
+        self.tabela_produtos = QTableWidget()
+        self.tabela_produtos.setColumnCount(4) # Definimos 4 colunas
+        self.tabela_produtos.setHorizontalHeaderLabels(["Código", "Nome", "Descrição", "Preço"])
+
+        # Ajustes na aparência da tabela
+        self.tabela_produtos.setAlternatingRowColors(True) # Cores alternadas nas linhas
+        self.tabela_produtos.horizontalHeader().setStretchLastSection(True) # A última coluna estica
+        self.tabela_produtos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        self.layout.addWidget(self.titulo)
+        self.layout.addWidget(self.tabela_produtos)
+
+        self.carregar_produtos()
+
+    def carregar_produtos(self):
+        global access_token
+        url = "http://127.0.0.1:5000/api/produtos"
+        headers = {'Authorization': f'Bearer {access_token}'}
+
+        try:
+            response = requests.get(url, headers=headers)
+
+            if response.status_code == 200:
+                produtos = response.json()
+                self.tabela_produtos.setRowCount(len(produtos)) # Ajusta o nº de linhas
+
+                for linha, produto in enumerate(produtos):
+                    self.tabela_produtos.setItem(linha, 0, QTableWidgetItem(produto['codigo']))
+                    self.tabela_produtos.setItem(linha, 1, QTableWidgetItem(produto['nome']))
+                    self.tabela_produtos.setItem(linha, 2, QTableWidgetItem(produto['descricao']))
+                    self.tabela_produtos.setItem(linha, 3, QTableWidgetItem(produto['preco']))
+            else:
+                QMessageBox.warning(self, "Erro", f"Erro ao carregar produtos: {response.json().get('erro')}")
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
 # ==============================================================================
 # BLOCO DE EXECUÇÃO PRINCIPAL
