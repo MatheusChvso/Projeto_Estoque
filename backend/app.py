@@ -216,7 +216,35 @@ def produto_por_id_endpoint(id_produto):
 
 # Adicione aqui as outras rotas (Fornecedores, Naturezas, Estoque, Usuários, Login)
 # seguindo o mesmo padrão de organização e refinamento.
+# ... (código anterior)
 
+# --- ROTA PARA BUSCAR UM PRODUTO PELO CÓDIGO ---
+@app.route('/api/produtos/codigo/<string:codigo>', methods=['GET'])
+@jwt_required()
+def get_produto_por_codigo(codigo):
+    """Busca um produto específico pelo seu campo 'Codigo'."""
+    try:
+        # O .strip() é importante caso o campo no banco seja CHAR, para remover espaços
+        produto = Produto.query.filter_by(codigo=codigo.strip()).first()
+        
+        if produto:
+            # Se encontrou o produto, retorna os seus dados
+            produto_json = {
+                'id': produto.id_produto,
+                'nome': produto.nome,
+                'codigo': produto.codigo.strip(),
+                'descricao': produto.descricao,
+                'preco': str(produto.preco)
+            }
+            return jsonify(produto_json), 200
+        else:
+            # Se não encontrou, retorna um erro 404 (Not Found)
+            return jsonify({'erro': 'Produto com este código não encontrado.'}), 404
+            
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+# ... (resto do ficheiro)
 # --- ROTAS DE ESTOQUE ---
 
 @app.route('/api/produtos/<int:id_produto>/estoque', methods=['GET'])
