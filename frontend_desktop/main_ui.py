@@ -230,6 +230,15 @@ class ProdutosWidget(QWidget):
         self.titulo = QLabel("Gestão de Produtos")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
         
+        
+        layout_botoes = QHBoxLayout()
+        self.btn_adicionar = QPushButton("Adicionar Novo")
+        self.btn_editar = QPushButton("Editar Selecionado")
+        self.btn_excluir = QPushButton("Excluir Selecionado")
+        layout_botoes.addWidget(self.btn_adicionar)
+        layout_botoes.addWidget(self.btn_editar)
+        layout_botoes.addWidget(self.btn_excluir)
+        layout_botoes.addStretch(1) # Empurra os botões para a esquerda        
         # --- Barra de Pesquisa (sem botão) ---
         # A barra de pesquisa agora é um widget de layout único
         self.input_pesquisa = QLineEdit()
@@ -245,6 +254,7 @@ class ProdutosWidget(QWidget):
 
         # Adicionar os widgets ao layout principal
         self.layout.addWidget(self.titulo)
+        self.layout.addLayout(layout_botoes)
         self.layout.addWidget(self.input_pesquisa) # Adicionamos o input diretamente
         self.layout.addWidget(self.tabela_produtos)
         
