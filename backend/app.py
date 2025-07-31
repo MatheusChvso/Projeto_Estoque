@@ -12,7 +12,7 @@ from flask_jwt_extended import (
     JWTManager
 )
 from datetime import datetime
-from sqlalchemy import case
+from sqlalchemy import case, or_
 
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
@@ -133,9 +133,27 @@ def calcular_saldo_produto(id_produto):
 @app.route('/api/produtos', methods=['GET'])
 @jwt_required()
 def get_todos_produtos():
-    """Retorna uma lista de todos os produtos."""
+    """Retorna uma lista de todos os produtos, opcionalmente filtrada por um termo de busca."""
     try:
-        produtos_db = Produto.query.all()
+        # Pega no parâmetro 'search' do URL, se ele existir
+        termo_busca = request.args.get('search')
+
+        query = Produto.query
+
+        if termo_busca:
+            # Se um termo de busca foi fornecido, filtra a consulta
+            # A função "ilike" faz uma busca case-insensitive (não diferencia maiúsculas/minúsculas)
+            # O '%' é um wildcard, então ele busca por qualquer produto que CONTENHA o termo
+            query = query.filter(
+                or_(
+                    Produto.nome.ilike(f"%{termo_busca}%"),
+                    Produto.codigo.ilike(f"%{termo_busca}%")
+                )
+            )
+
+        produtos_db = query.all()
+
+        # O resto da função continua exatamente igual...
         produtos_json = []
         for produto in produtos_db:
             produtos_json.append({
@@ -148,6 +166,7 @@ def get_todos_produtos():
         return jsonify(produtos_json), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+
 
 @app.route('/api/produtos', methods=['POST'])
 @jwt_required()
@@ -312,6 +331,37 @@ def registrar_saida():
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+
+
+
+
+
+
+@app.route('/api/estoque/saldos', methods=['GET'])
+@jwt_required()
+def get_saldos_estoque():
+    """Calcula e retorna o saldo de estoque para todos os produtos."""
+    try:
+        # Primeiro, pega todos os produtos
+        produtos = Produto.query.all()
+        
+        saldos_json = []
+        for produto in produtos:
+            # Para cada produto, chama a nossa função auxiliar
+            saldo_atual = calcular_saldo_produto(produto.id_produto)
+            saldos_json.append({
+                'id_produto': produto.id_produto,
+                'codigo': produto.codigo.strip(),
+                'nome': produto.nome,
+                'saldo_atual': saldo_atual
+            })
+            
+        return jsonify(saldos_json), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+
+
 
 # --- ROTAS DE LOGIN E USUÁRIOS ---
 

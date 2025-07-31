@@ -182,20 +182,25 @@ class JanelaPrincipal(QMainWindow):
         # --- ÁREA DE CONTEÚDO (USANDO QStackedWidget) ---
         self.stacked_widget = QStackedWidget()
         layout_principal.addWidget(self.stacked_widget)
+        
+        
 
         self.tela_dashboard = QLabel("Bem-vindo ao Sistema!\n\nSelecione uma opção no menu lateral para começar.")
         self.tela_dashboard.setAlignment(Qt.AlignCenter)
         self.tela_dashboard.setStyleSheet("font-size: 18px; color: #555;")
         self.tela_produtos = ProdutosWidget()
+        self.tela_estoque = EstoqueWidget()
 
         self.stacked_widget.addWidget(self.tela_dashboard)
         self.stacked_widget.addWidget(self.tela_produtos)
+        self.stacked_widget.addWidget(self.tela_estoque)
 
         # --- CONEXÃO DOS SINAIS AOS SLOTS ---
         # Agora conectamos os atributos 'self.btn...'
         self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
+        self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
 
         # --- BARRA DE STATUS ---
         self.statusBar().showMessage("Pronto.")
@@ -209,7 +214,9 @@ class JanelaPrincipal(QMainWindow):
         # Diz ao QStackedWidget para mostrar a tela_produtos
         self.stacked_widget.setCurrentWidget(self.tela_produtos)
 
-
+    def mostrar_tela_estoque(self):
+        # Diz ao QStackedWidget para mostrar a tela_estoque
+        self.stacked_widget.setCurrentWidget(self.tela_estoque)
 
 class ProdutosWidget(QWidget):
     def __init__(self):
@@ -221,19 +228,32 @@ class ProdutosWidget(QWidget):
         self.titulo = QLabel("Gestão de Produtos")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
 
+        # --- Layout para a Barra de Pesquisa ---
+        layout_pesquisa = QHBoxLayout()
+        self.input_pesquisa = QLineEdit()
+        self.input_pesquisa.setPlaceholderText("Buscar por nome ou código...")
+        self.btn_pesquisar = QPushButton("Buscar")
+
+        layout_pesquisa.addWidget(self.input_pesquisa)
+        layout_pesquisa.addWidget(self.btn_pesquisar)
+
         # Tabela para exibir os produtos
         self.tabela_produtos = QTableWidget()
-        self.tabela_produtos.setColumnCount(4) # Definimos 4 colunas
+        self.tabela_produtos.setColumnCount(4)
         self.tabela_produtos.setHorizontalHeaderLabels(["Código", "Nome", "Descrição", "Preço"])
-
-        # Ajustes na aparência da tabela
-        self.tabela_produtos.setAlternatingRowColors(True) # Cores alternadas nas linhas
-        self.tabela_produtos.horizontalHeader().setStretchLastSection(True) # A última coluna estica
+        self.tabela_produtos.setAlternatingRowColors(True)
+        self.tabela_produtos.horizontalHeader().setStretchLastSection(True)
         self.tabela_produtos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
+        # --- CORREÇÃO 1: Adicionar os widgets na ordem correta ---
         self.layout.addWidget(self.titulo)
+        self.layout.addLayout(layout_pesquisa) # <-- A linha que faltava
         self.layout.addWidget(self.tabela_produtos)
 
+        # --- CORREÇÃO 2: Conectar o botão de busca ---
+        self.btn_pesquisar.clicked.connect(self.carregar_produtos)
+
+        # Carga inicial dos dados
         self.carregar_produtos()
 
     def carregar_produtos(self):
@@ -241,12 +261,17 @@ class ProdutosWidget(QWidget):
         url = "http://127.0.0.1:5000/api/produtos"
         headers = {'Authorization': f'Bearer {access_token}'}
 
+        termo_busca = self.input_pesquisa.text()
+        params = {}
+        if termo_busca:
+            params['search'] = termo_busca
+
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, params=params)
 
             if response.status_code == 200:
                 produtos = response.json()
-                self.tabela_produtos.setRowCount(len(produtos)) # Ajusta o nº de linhas
+                self.tabela_produtos.setRowCount(len(produtos))
 
                 for linha, produto in enumerate(produtos):
                     self.tabela_produtos.setItem(linha, 0, QTableWidgetItem(produto['codigo']))
@@ -258,6 +283,63 @@ class ProdutosWidget(QWidget):
 
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+
+
+
+
+class EstoqueWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        self.layout = QVBoxLayout(self)
+        
+        self.titulo = QLabel("Saldos de Estoque")
+        self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
+        
+        self.tabela_estoque = QTableWidget()
+        self.tabela_estoque.setColumnCount(3)
+        self.tabela_estoque.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
+        
+        self.tabela_estoque.setAlternatingRowColors(True)
+        self.tabela_estoque.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        self.layout.addWidget(self.titulo)
+        self.layout.addWidget(self.tabela_estoque)
+        
+        # Chamada inicial para carregar os dados
+        self.carregar_dados_estoque()
+
+    def carregar_dados_estoque(self):
+        global access_token
+        # Usamos o nosso NOVO endpoint eficiente
+        url = "http://127.0.0.1:5000/api/estoque/saldos"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        try:
+            response = requests.get(url, headers=headers)
+            
+            if response.status_code == 200:
+                saldos = response.json()
+                self.tabela_estoque.setRowCount(len(saldos))
+                
+                for linha, item in enumerate(saldos):
+                    self.tabela_estoque.setItem(linha, 0, QTableWidgetItem(item['codigo']))
+                    self.tabela_estoque.setItem(linha, 1, QTableWidgetItem(item['nome']))
+                    # Convertemos o número do saldo para string para exibir na tabela
+                    self.tabela_estoque.setItem(linha, 2, QTableWidgetItem(str(item['saldo_atual'])))
+            else:
+                QMessageBox.warning(self, "Erro", f"Erro ao carregar saldos: {response.json().get('msg') or response.json().get('erro')}")
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+
+
+
+
+
+
 
 # ==============================================================================
 # BLOCO DE EXECUÇÃO PRINCIPAL
