@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy
 )
 from PySide6.QtGui import QPixmap, QAction
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 # ==============================================================================
 # VARIÁVEIS GLOBAIS
 # ==============================================================================
@@ -217,26 +217,24 @@ class JanelaPrincipal(QMainWindow):
     def mostrar_tela_estoque(self):
         # Diz ao QStackedWidget para mostrar a tela_estoque
         self.stacked_widget.setCurrentWidget(self.tela_estoque)
+        
+        
+                
 
 class ProdutosWidget(QWidget):
     def __init__(self):
         super().__init__()
-
+        
         self.layout = QVBoxLayout(self)
-
-        # Título da tela
+        
         self.titulo = QLabel("Gestão de Produtos")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
-
-        # --- Layout para a Barra de Pesquisa ---
-        layout_pesquisa = QHBoxLayout()
+        
+        # --- Barra de Pesquisa (sem botão) ---
+        # A barra de pesquisa agora é um widget de layout único
         self.input_pesquisa = QLineEdit()
         self.input_pesquisa.setPlaceholderText("Buscar por nome ou código...")
-        self.btn_pesquisar = QPushButton("Buscar")
-
-        layout_pesquisa.addWidget(self.input_pesquisa)
-        layout_pesquisa.addWidget(self.btn_pesquisar)
-
+        
         # Tabela para exibir os produtos
         self.tabela_produtos = QTableWidget()
         self.tabela_produtos.setColumnCount(4)
@@ -245,34 +243,47 @@ class ProdutosWidget(QWidget):
         self.tabela_produtos.horizontalHeader().setStretchLastSection(True)
         self.tabela_produtos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
-        # --- CORREÇÃO 1: Adicionar os widgets na ordem correta ---
+        # Adicionar os widgets ao layout principal
         self.layout.addWidget(self.titulo)
-        self.layout.addLayout(layout_pesquisa) # <-- A linha que faltava
+        self.layout.addWidget(self.input_pesquisa) # Adicionamos o input diretamente
         self.layout.addWidget(self.tabela_produtos)
+        
+        # --- Configuração do Timer para Debounce ---
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True) # O timer só dispara uma vez
+        self.search_timer.timeout.connect(self.carregar_produtos) # Quando o timer dispara, chama carregar_produtos
 
-        # --- CORREÇÃO 2: Conectar o botão de busca ---
-        self.btn_pesquisar.clicked.connect(self.carregar_produtos)
-
+        # --- Conexão do Sinal ---
+        # Conecta o sinal textChanged a um método que reinicia o timer
+        self.input_pesquisa.textChanged.connect(self.iniciar_busca_timer)
+        
         # Carga inicial dos dados
         self.carregar_produtos()
 
+    def iniciar_busca_timer(self):
+        """Reinicia o cronómetro sempre que o texto é alterado."""
+        self.search_timer.stop() # Para o timer se ele já estiver a correr
+        self.search_timer.start(300) # Inicia (ou reinicia) para disparar em 300ms
+
     def carregar_produtos(self):
+        """Busca os produtos na API e atualiza a tabela."""
         global access_token
         url = "http://127.0.0.1:5000/api/produtos"
         headers = {'Authorization': f'Bearer {access_token}'}
-
+        
         termo_busca = self.input_pesquisa.text()
         params = {}
         if termo_busca:
             params['search'] = termo_busca
-
+        
         try:
             response = requests.get(url, headers=headers, params=params)
-
+            
             if response.status_code == 200:
                 produtos = response.json()
+                self.tabela_produtos.setRowCount(0) # Limpa a tabela antes de adicionar novos dados
                 self.tabela_produtos.setRowCount(len(produtos))
-
+                
                 for linha, produto in enumerate(produtos):
                     self.tabela_produtos.setItem(linha, 0, QTableWidgetItem(produto['codigo']))
                     self.tabela_produtos.setItem(linha, 1, QTableWidgetItem(produto['nome']))
@@ -282,7 +293,8 @@ class ProdutosWidget(QWidget):
                 QMessageBox.warning(self, "Erro", f"Erro ao carregar produtos: {response.json().get('erro')}")
 
         except requests.exceptions.RequestException as e:
-            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+            # Não mostra a mensagem de erro de conexão a cada letra digitada se o server estiver offline
+            print(f"Erro de Conexão: {e}")
 
 
 
