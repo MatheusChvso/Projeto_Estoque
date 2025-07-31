@@ -8,6 +8,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QPixmap, QAction
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (
+    # ...
+    QDialog, QFormLayout, QDialogButtonBox
+)
 # ==============================================================================
 # VARIÁVEIS GLOBAIS
 # ==============================================================================
@@ -221,6 +225,8 @@ class JanelaPrincipal(QMainWindow):
         
                 
 
+# Dentro do seu main_ui.py
+
 class ProdutosWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -230,7 +236,7 @@ class ProdutosWidget(QWidget):
         self.titulo = QLabel("Gestão de Produtos")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
         
-        
+        # --- Layout para os Botões de Ação ---
         layout_botoes = QHBoxLayout()
         self.btn_adicionar = QPushButton("Adicionar Novo")
         self.btn_editar = QPushButton("Editar Selecionado")
@@ -238,13 +244,13 @@ class ProdutosWidget(QWidget):
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
-        layout_botoes.addStretch(1) # Empurra os botões para a esquerda        
-        # --- Barra de Pesquisa (sem botão) ---
-        # A barra de pesquisa agora é um widget de layout único
+        layout_botoes.addStretch(1) # Empurra os botões para a esquerda
+        
+        # --- Barra de Pesquisa ---
         self.input_pesquisa = QLineEdit()
         self.input_pesquisa.setPlaceholderText("Buscar por nome ou código...")
         
-        # Tabela para exibir os produtos
+        # --- Tabela de Produtos ---
         self.tabela_produtos = QTableWidget()
         self.tabela_produtos.setColumnCount(4)
         self.tabela_produtos.setHorizontalHeaderLabels(["Código", "Nome", "Descrição", "Preço"])
@@ -252,28 +258,35 @@ class ProdutosWidget(QWidget):
         self.tabela_produtos.horizontalHeader().setStretchLastSection(True)
         self.tabela_produtos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
-        # Adicionar os widgets ao layout principal
+        # Adiciona todos os widgets e layouts ao layout principal da tela
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(layout_botoes)
-        self.layout.addWidget(self.input_pesquisa) # Adicionamos o input diretamente
+        self.layout.addWidget(self.input_pesquisa)
         self.layout.addWidget(self.tabela_produtos)
         
-        # --- Configuração do Timer para Debounce ---
+        # --- Configuração do Timer para Debounce da Pesquisa ---
         self.search_timer = QTimer(self)
-        self.search_timer.setSingleShot(True) # O timer só dispara uma vez
-        self.search_timer.timeout.connect(self.carregar_produtos) # Quando o timer dispara, chama carregar_produtos
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self.carregar_produtos)
 
-        # --- Conexão do Sinal ---
-        # Conecta o sinal textChanged a um método que reinicia o timer
+        # --- Conexões dos Sinais (Ações do Usuário) ---
+        self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
+        # A linha abaixo foi REMOVIDA porque o botão self.btn_pesquisar não existe mais.
+        # self.btn_pesquisar.clicked.connect(self.carregar_produtos)
         self.input_pesquisa.textChanged.connect(self.iniciar_busca_timer)
         
-        # Carga inicial dos dados
+        # Carga inicial dos dados no final, depois de tudo estar configurado
         self.carregar_produtos()
+
+    def abrir_formulario_adicionar(self):
+        dialog = FormularioProdutoDialog(self)
+        if dialog.exec():
+            self.carregar_produtos()
 
     def iniciar_busca_timer(self):
         """Reinicia o cronómetro sempre que o texto é alterado."""
-        self.search_timer.stop() # Para o timer se ele já estiver a correr
-        self.search_timer.start(300) # Inicia (ou reinicia) para disparar em 300ms
+        self.search_timer.stop()
+        self.search_timer.start(300)
 
     def carregar_produtos(self):
         """Busca os produtos na API e atualiza a tabela."""
@@ -291,7 +304,7 @@ class ProdutosWidget(QWidget):
             
             if response.status_code == 200:
                 produtos = response.json()
-                self.tabela_produtos.setRowCount(0) # Limpa a tabela antes de adicionar novos dados
+                self.tabela_produtos.setRowCount(0)
                 self.tabela_produtos.setRowCount(len(produtos))
                 
                 for linha, produto in enumerate(produtos):
@@ -303,10 +316,7 @@ class ProdutosWidget(QWidget):
                 QMessageBox.warning(self, "Erro", f"Erro ao carregar produtos: {response.json().get('erro')}")
 
         except requests.exceptions.RequestException as e:
-            # Não mostra a mensagem de erro de conexão a cada letra digitada se o server estiver offline
             print(f"Erro de Conexão: {e}")
-
-
 
 
 
@@ -357,6 +367,68 @@ class EstoqueWidget(QWidget):
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
 
+
+
+
+# --- JANELA DE DIÁLOGO PARA O FORMULÁRIO DE PRODUTO ---
+class FormularioProdutoDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Adicionar Novo Produto")
+
+        # Layout do formulário (ótimo para pares de label-campo)
+        self.layout = QFormLayout(self)
+
+        # Campos do formulário
+        self.input_codigo = QLineEdit()
+        self.input_nome = QLineEdit()
+        self.input_descricao = QLineEdit()
+        self.input_preco = QLineEdit()
+        self.input_codigoB = QLineEdit()
+        self.input_codigoC = QLineEdit()
+
+        # Adiciona os campos ao layout do formulário
+        self.layout.addRow("Código:", self.input_codigo)
+        self.layout.addRow("Nome:", self.input_nome)
+        self.layout.addRow("Descrição:", self.input_descricao)
+        self.layout.addRow("Preço:", self.input_preco)
+        self.layout.addRow("Código B:", self.input_codigoB)
+        self.layout.addRow("Código C:", self.input_codigoC)
+
+        # Botões padrão (Salvar e Cancelar)
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        self.botoes.accepted.connect(self.accept) # Conecta o sinal de "aceitar"
+        self.botoes.rejected.connect(self.reject) # Conecta o sinal de "rejeitar"
+        
+        self.layout.addWidget(self.botoes)
+
+    # Esta função é chamada quando o usuário clica em "Salvar"
+    def accept(self):
+        global access_token
+        url = "http://127.0.0.1:5000/api/produtos"
+        headers = {'Authorization': f'Bearer {access_token}'}
+
+        dados_produto = {
+            "codigo": self.input_codigo.text(),
+            "nome": self.input_nome.text(),
+            "descricao": self.input_descricao.text(),
+            "preco": self.input_preco.text(),
+            "codigoB": self.input_codigoB.text(),
+            "codigoC": self.input_codigoC.text()
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=dados_produto)
+            if response.status_code == 201:
+                QMessageBox.information(self, "Sucesso", "Produto adicionado com sucesso!")
+                super().accept() # Fecha o diálogo com sucesso
+            else:
+                # Se a API retornar um erro, exibe-o
+                erro = response.json().get('erro', 'Erro desconhecido do servidor.')
+                QMessageBox.warning(self, "Erro", f"Não foi possível adicionar o produto: {erro}")
+        
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
 
 
