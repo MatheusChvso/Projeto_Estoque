@@ -686,6 +686,66 @@ def natureza_por_id_endpoint(id_natureza):
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
 
+
+# TRECHO PARA SUBSTITUIR a função usuarios_endpoint em app.py
+
+# ==============================================================================
+# ROTAS DA API PARA USUÁRIOS
+# ==============================================================================
+
+@app.route('/api/usuarios', methods=['GET'])
+@jwt_required() # Protege a rota, exigindo um token
+def get_todos_usuarios():
+    """Retorna uma lista de todos os usuários."""
+    try:
+        # Verifica se o usuário logado é um Administrador
+        claims = get_jwt()
+        if claims.get('permissao') != 'Administrador':
+            return jsonify({"erro": "Acesso negado: permissão de Administrador necessária."}), 403
+
+        usuarios = Usuario.query.all()
+        usuarios_json = []
+        for u in usuarios:
+            usuarios_json.append({
+                'id': u.id_usuario,
+                'nome': u.nome,
+                'login': u.login,
+                'permissao': u.permissao,
+                'ativo': u.ativo
+            })
+        return jsonify(usuarios_json), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/usuarios', methods=['POST'])
+@jwt_required() # Protege a rota, exigindo um token
+def add_novo_usuario():
+    """Cria um novo usuário."""
+    try:
+        # Verifica se o usuário logado é um Administrador
+        claims = get_jwt()
+        if claims.get('permissao') != 'Administrador':
+            return jsonify({"erro": "Acesso negado: permissão de Administrador necessária."}), 403
+
+        dados = request.get_json()
+        if 'login' not in dados or 'senha' not in dados or 'nome' not in dados or 'permissao' not in dados:
+            return jsonify({'erro': 'Dados incompletos'}), 400
+
+        novo_usuario = Usuario(
+            nome=dados['nome'],
+            login=dados['login'],
+            permissao=dados['permissao']
+        )
+        novo_usuario.set_password(dados['senha'])
+        
+        db.session.add(novo_usuario)
+        db.session.commit()
+        
+        return jsonify({'mensagem': 'Usuário criado com sucesso!'}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
 # ==============================================================================
 # Bloco de Execução Principal
 # ==============================================================================
