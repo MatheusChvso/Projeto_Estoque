@@ -13,6 +13,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QPixmap, QAction, QDoubleValidator
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (
+    # ... todos os seus imports existentes
+    QComboBox
+)
 
 # ==============================================================================
 # 2. VARIÁVEIS GLOBAIS
@@ -279,7 +283,8 @@ class FormularioUsuarioDialog(QDialog):
         self.input_login = QLineEdit()
         self.input_senha = QLineEdit()
         self.input_senha.setPlaceholderText("Deixe em branco para não alterar")
-        self.input_permissao = QLineEdit() # Futuramente, pode ser um ComboBox
+        self.input_permissao = QComboBox()
+        self.input_permissao.addItems(["Usuario", "Administrador"])
 
         self.layout.addRow("Nome:", self.input_nome)
         self.layout.addRow("Login:", self.input_login)
@@ -299,8 +304,34 @@ class FormularioUsuarioDialog(QDialog):
         pass
 
     def accept(self):
-        # TODO: Implementar a lógica de salvar (POST/PUT) na API
-        pass
+        """Envia os dados para a API para criar um novo usuário."""
+        global access_token
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        dados = {
+            "nome": self.input_nome.text(),
+            "login": self.input_login.text(),
+            "senha": self.input_senha.text(),
+            "permissao": self.input_permissao.currentText()
+        }
+
+        try:
+            # Por enquanto, só implementamos a lógica de ADICIONAR (POST)
+            if self.usuario_id is None:
+                url = "http://127.0.0.1:5000/api/usuarios"
+                response = requests.post(url, headers=headers, json=dados)
+                
+                if response.status_code == 201:
+                    QMessageBox.information(self, "Sucesso", "Usuário adicionado com sucesso!")
+                    super().accept() # Fecha o diálogo com sucesso
+                else:
+                    # Levanta uma exceção com a mensagem de erro da API
+                    raise Exception(response.json().get('erro', 'Erro desconhecido'))
+            else:
+                # TODO: Implementar a lógica de EDIÇÃO (PUT)
+                pass
+        except Exception as e:
+            QMessageBox.warning(self, "Erro", f"Não foi possível adicionar o usuário: {e}")
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
@@ -704,8 +735,11 @@ class UsuariosWidget(QWidget):
             print(f"Erro de Conexão: {e}")
 
     def abrir_formulario_adicionar(self):
-        # TODO: Implementar a lógica para abrir o FormularioUsuarioDialog
-        print("Abrir formulário de usuário...")
+        """Abre o diálogo para adicionar um novo usuário."""
+        dialog = FormularioUsuarioDialog(self)
+        # Se o formulário for salvo com sucesso (retorna True), atualiza a lista
+        if dialog.exec():
+            self.carregar_usuarios()
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
