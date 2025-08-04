@@ -483,7 +483,49 @@ def get_saldos_estoque():
         return jsonify({'erro': str(e)}), 500
 
 
+@app.route('/api/movimentacoes', methods=['GET'])
+@jwt_required()
+def get_todas_movimentacoes():
+    """
+    Retorna uma lista de todas as movimentações de estoque (entradas e saídas),
+    incluindo dados do produto e do usuário associados.
+    Suporta filtragem por tipo de movimentação.
+    """
+    try:
+        # Pega o parâmetro de filtro da URL, ex: /api/movimentacoes?tipo=Entrada
+        filtro_tipo = request.args.get('tipo')
 
+        # Começa a consulta base, usando joinedload para otimizar a busca dos
+        # dados relacionados de Produto e Usuario em uma única viagem ao banco.
+        query = MovimentacaoEstoque.query.options(
+            joinedload(MovimentacaoEstoque.produto),
+            joinedload(MovimentacaoEstoque.usuario)
+        ).order_by(MovimentacaoEstoque.data_hora.desc()) # Ordena pelas mais recentes
+
+        # Aplica o filtro se ele foi fornecido na URL
+        if filtro_tipo and filtro_tipo in ["Entrada", "Saida"]:
+            query = query.filter(MovimentacaoEstoque.tipo == filtro_tipo)
+
+        movimentacoes = query.all()
+
+        resultado_json = []
+        for mov in movimentacoes:
+            resultado_json.append({
+                'id': mov.id_movimentacao,
+                'data_hora': mov.data_hora.strftime('%d/%m/%Y %H:%M:%S'),
+                'tipo': mov.tipo,
+                'quantidade': mov.quantidade,
+                'motivo_saida': mov.motivo_saida,
+                # Adiciona os dados relacionados para facilitar a exibição no front-end
+                'produto_codigo': mov.produto.codigo.strip() if mov.produto else 'N/A',
+                'produto_nome': mov.produto.nome if mov.produto else 'Produto Excluído',
+                'usuario_nome': mov.usuario.nome if mov.usuario else 'Usuário Excluído'
+            })
+        
+        return jsonify(resultado_json), 200
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
 
 # --- ROTAS DE LOGIN E USUÁRIOS ---
 

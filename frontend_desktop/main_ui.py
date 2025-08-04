@@ -515,41 +515,242 @@ class ProdutosWidget(QWidget):
         except requests.exceptions.RequestException as e:
             print(f"Erro de Conexão: {e}")
 
-class EstoqueWidget(QWidget):
-    """Tela para visualizar os saldos de estoque."""
+# SUBSTITUA TODA A SUA CLASSE EstoqueWidget POR ESTA VERSÃO COMPLETA
+
+class SaldosWidget(QWidget):
+    """Tela para visualizar os saldos de estoque, com pesquisa e ordenação."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
+        self.dados_completos = [] # Lista para guardar os dados originais da API
+        self.dados_exibidos = []  # Lista para guardar os dados atualmente na tela (para re-ordenar)
+
+        # --- Título ---
         self.titulo = QLabel("Saldos de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
+
+        # --- Layout de Controles (Pesquisa e Botões) ---
+        layout_controles = QHBoxLayout()
+        
+        self.input_pesquisa = QLineEdit()
+        self.input_pesquisa.setPlaceholderText("Buscar por nome ou código do produto...")
+        self.input_pesquisa.setStyleSheet("font-size: 14px; padding: 5px;")
+        
+        self.btn_ordenar_nome = QPushButton("Ordenar A-Z")
+        self.btn_ordenar_codigo = QPushButton("Ordenar por Código")
+        self.btn_recarregar = QPushButton("Recarregar")
+
+        layout_controles.addWidget(self.input_pesquisa)
+        layout_controles.addWidget(self.btn_ordenar_nome)
+        layout_controles.addWidget(self.btn_ordenar_codigo)
+        layout_controles.addWidget(self.btn_recarregar)
+
+        # --- Tabela de Estoque ---
         self.tabela_estoque = QTableWidget()
         self.tabela_estoque.setColumnCount(3)
         self.tabela_estoque.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
         self.tabela_estoque.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela_estoque.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabela_estoque.setAlternatingRowColors(True)
         self.tabela_estoque.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Ajuste para o nome do produto ter mais espaço
+        self.tabela_estoque.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.tabela_estoque.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tabela_estoque.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        
+        # --- Adicionando Widgets ao Layout Principal ---
         self.layout.addWidget(self.titulo)
+        self.layout.addLayout(layout_controles)
         self.layout.addWidget(self.tabela_estoque)
+
+        # --- Conexões ---
+        self.btn_recarregar.clicked.connect(self.carregar_dados_estoque)
+        self.input_pesquisa.textChanged.connect(self.filtrar_tabela)
+        self.btn_ordenar_nome.clicked.connect(self.ordenar_por_nome)
+        self.btn_ordenar_codigo.clicked.connect(self.ordenar_por_codigo)
+
+        # --- Carga Inicial ---
         self.carregar_dados_estoque()
 
     def carregar_dados_estoque(self):
+        """Busca os dados mais recentes da API e os armazena localmente."""
         global access_token
         url = "http://127.0.0.1:5000/api/estoque/saldos"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
             if response.status_code == 200:
-                saldos = response.json()
-                self.tabela_estoque.setRowCount(len(saldos))
-                for linha, item in enumerate(saldos):
-                    self.tabela_estoque.setItem(linha, 0, QTableWidgetItem(item['codigo']))
-                    self.tabela_estoque.setItem(linha, 1, QTableWidgetItem(item['nome']))
-                    self.tabela_estoque.setItem(linha, 2, QTableWidgetItem(str(item['saldo_atual'])))
+                self.dados_completos = response.json()
+                self.filtrar_tabela() # Exibe os dados filtrados (ou todos, se a busca estiver vazia)
             else:
                 QMessageBox.warning(self, "Erro", f"Erro ao carregar saldos: {response.json().get('msg') or response.json().get('erro')}")
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
+    def filtrar_tabela(self):
+        """Filtra os dados completos com base no texto de pesquisa e popula a tabela."""
+        termo_busca = self.input_pesquisa.text().lower()
+        
+        if not termo_busca:
+            self.dados_exibidos = self.dados_completos[:] # Copia a lista completa
+        else:
+            self.dados_exibidos = [
+                item for item in self.dados_completos
+                if termo_busca in item['nome'].lower() or termo_busca in item['codigo'].lower()
+            ]
+        
+        self.popular_tabela(self.dados_exibidos)
+
+    def popular_tabela(self, dados):
+        """Limpa e preenche a QTableWidget com uma lista de dados fornecida."""
+        self.tabela_estoque.setRowCount(0) # Limpa a tabela
+        self.tabela_estoque.setRowCount(len(dados))
+        
+        for linha, item in enumerate(dados):
+            self.tabela_estoque.setItem(linha, 0, QTableWidgetItem(item['codigo']))
+            self.tabela_estoque.setItem(linha, 1, QTableWidgetItem(item['nome']))
+            
+            saldo_item = QTableWidgetItem(str(item['saldo_atual']))
+            saldo_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter) # Centraliza o saldo
+            self.tabela_estoque.setItem(linha, 2, saldo_item)
+
+    def ordenar_por_nome(self):
+        """Ordena os dados exibidos por nome e atualiza a tabela."""
+        self.dados_exibidos.sort(key=lambda item: item['nome'].lower())
+        self.popular_tabela(self.dados_exibidos)
+
+    def ordenar_por_codigo(self):
+        """Ordena os dados exibidos por código e atualiza a tabela."""
+        self.dados_exibidos.sort(key=lambda item: item['codigo'])
+        self.popular_tabela(self.dados_exibidos)
+
+class HistoricoWidget(QWidget):
+    """Sub-tela para visualizar e filtrar o histórico de movimentações."""
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.dados_completos = []
+
+        # --- Layout de Filtros ---
+        layout_filtros = QHBoxLayout()
+        self.combo_tipo = QComboBox()
+        self.combo_tipo.addItems(["Todas", "Entradas", "Saídas"])
+        self.combo_tipo.setStyleSheet("font-size: 14px; padding: 5px;")
+        
+        self.btn_filtrar = QPushButton("Filtrar")
+        self.btn_recarregar = QPushButton("Recarregar Histórico")
+        
+        layout_filtros.addWidget(QLabel("Filtrar por tipo:"))
+        layout_filtros.addWidget(self.combo_tipo)
+        layout_filtros.addWidget(self.btn_filtrar)
+        layout_filtros.addStretch(1)
+        layout_filtros.addWidget(self.btn_recarregar)
+
+        # --- Tabela de Histórico ---
+        self.tabela_historico = QTableWidget()
+        self.tabela_historico.setColumnCount(7)
+        self.tabela_historico.setHorizontalHeaderLabels([
+            "Data/Hora", "Produto (Código)", "Produto (Nome)", "Tipo", "Qtd.", "Usuário", "Motivo da Saída"
+        ])
+        self.tabela_historico.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela_historico.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabela_historico.setAlternatingRowColors(True)
+
+        self.layout.addLayout(layout_filtros)
+        self.layout.addWidget(self.tabela_historico)
+
+        # --- Conexões ---
+        self.btn_recarregar.clicked.connect(self.carregar_historico)
+        self.btn_filtrar.clicked.connect(self.popular_tabela)
+
+    def carregar_historico(self):
+        """Busca o histórico completo da API e o armazena localmente."""
+        global access_token
+        url = "http://127.0.0.1:5000/api/movimentacoes"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                self.dados_completos = response.json()
+                self.popular_tabela() # Exibe todos os dados inicialmente
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar o histórico.")
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+            
+    def popular_tabela(self):
+        """Filtra e preenche a tabela com base na seleção do ComboBox."""
+        filtro = self.combo_tipo.currentText()
+        
+        if filtro == "Todas":
+            dados_filtrados = self.dados_completos
+        elif filtro == "Entradas":
+            dados_filtrados = [mov for mov in self.dados_completos if mov['tipo'] == 'Entrada']
+        else: # Saídas
+            dados_filtrados = [mov for mov in self.dados_completos if mov['tipo'] == 'Saida']
+
+        self.tabela_historico.setRowCount(0)
+        self.tabela_historico.setRowCount(len(dados_filtrados))
+
+        for linha, mov in enumerate(dados_filtrados):
+            self.tabela_historico.setItem(linha, 0, QTableWidgetItem(mov['data_hora']))
+            self.tabela_historico.setItem(linha, 1, QTableWidgetItem(mov['produto_codigo']))
+            self.tabela_historico.setItem(linha, 2, QTableWidgetItem(mov['produto_nome']))
+            self.tabela_historico.setItem(linha, 3, QTableWidgetItem(mov['tipo']))
+            self.tabela_historico.setItem(linha, 4, QTableWidgetItem(str(mov['quantidade'])))
+            self.tabela_historico.setItem(linha, 5, QTableWidgetItem(mov['usuario_nome']))
+            self.tabela_historico.setItem(linha, 6, QTableWidgetItem(mov.get('motivo_saida', '')))
+
+
+class EstoqueWidget(QWidget):
+    """Widget contêiner que gerencia as visualizações de Saldos e Histórico."""
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0,0,0,0)
+
+        # --- Sub-Widgets (as "telas" internas) ---
+        self.saldos_view = SaldosWidget()
+        self.historico_view = HistoricoWidget()
+
+        # --- Botões de Navegação ---
+        nav_layout = QHBoxLayout()
+        self.btn_ver_saldos = QPushButton("Visualizar Saldos")
+        self.btn_ver_historico = QPushButton("Ver Histórico")
+        self.btn_ver_saldos.setCheckable(True)
+        self.btn_ver_historico.setCheckable(True)
+        self.btn_ver_saldos.setChecked(True)
+
+        nav_layout.addWidget(self.btn_ver_saldos)
+        nav_layout.addWidget(self.btn_ver_historico)
+        nav_layout.addStretch(1)
+
+        # --- Stacked Widget para alternar as telas ---
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.saldos_view)
+        self.stack.addWidget(self.historico_view)
+
+        self.layout.addLayout(nav_layout)
+        self.layout.addWidget(self.stack)
+
+        # --- Conexões ---
+        self.btn_ver_saldos.clicked.connect(self.mostrar_saldos)
+        self.btn_ver_historico.clicked.connect(self.mostrar_historico)
+
+    def mostrar_saldos(self):
+        self.stack.setCurrentWidget(self.saldos_view)
+        self.btn_ver_saldos.setChecked(True)
+        self.btn_ver_historico.setChecked(False)
+        # Recarrega os dados de saldo ao exibir a tela
+        self.saldos_view.carregar_dados_estoque()
+
+    def mostrar_historico(self):
+        self.stack.setCurrentWidget(self.historico_view)
+        self.btn_ver_saldos.setChecked(False)
+        self.btn_ver_historico.setChecked(True)
+        # Recarrega os dados de histórico ao exibir a tela
+        self.historico_view.carregar_historico()
+        
 class FornecedoresWidget(QWidget):
     """Tela para gerir (CRUD) os fornecedores."""
     def __init__(self):
@@ -1233,9 +1434,9 @@ class JanelaPrincipal(QMainWindow):
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
         self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
         self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
-        self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.carregar_dados_estoque)
+        self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
         self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
-        self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.carregar_dados_estoque)
+        self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
         self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
         self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
 
@@ -1258,12 +1459,16 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.tela_produtos)
 
     def mostrar_tela_estoque(self):
-        # Primeiro, manda a tela de estoque recarregar os seus dados
-        self.tela_estoque.carregar_dados_estoque()
-        # Depois, exibe a tela já atualizada
+        """
+        Mostra a widget contêiner de Estoque e garante que a
+        visualização padrão (Saldos) seja exibida e atualizada.
+        """
+        # A nova EstoqueWidget gerencia seu próprio estado.
+        # Apenas precisamos garantir que a visão de saldos é mostrada.
+        self.tela_estoque.mostrar_saldos() 
         self.stacked_widget.setCurrentWidget(self.tela_estoque)
         
-    def mostrar_tela_fornecedores(self):
+    def mostrar_tela_fornecedores(self):    
         self.stacked_widget.setCurrentWidget(self.tela_fornecedores)
         
     def mostrar_tela_naturezas(self):
