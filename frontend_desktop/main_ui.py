@@ -277,6 +277,7 @@ class FormularioUsuarioDialog(QDialog):
         super().__init__(parent)
         self.usuario_id = usuario_id
         self.setWindowTitle("Adicionar Novo Usuário" if self.usuario_id is None else "Editar Usuário")
+        self.setMinimumWidth(350)
 
         self.layout = QFormLayout(self)
         self.input_nome = QLineEdit()
@@ -300,38 +301,59 @@ class FormularioUsuarioDialog(QDialog):
             self.carregar_dados_usuario()
 
     def carregar_dados_usuario(self):
-        # TODO: Implementar a busca de dados do usuário na API
-        pass
+        """Busca os dados de um usuário específico na API para preencher o formulário."""
+        global access_token
+        url = f"http://127.0.0.1:5000/api/usuarios/{self.usuario_id}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                dados = response.json()
+                self.input_nome.setText(dados.get('nome', ''))
+                self.input_login.setText(dados.get('login', ''))
+                self.input_permissao.setCurrentText(dados.get('permissao', 'Usuario'))
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar os dados do usuário.")
+                self.reject() # Fecha o diálogo se não conseguir carregar
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar dados: {e}")
+            self.reject()
 
     def accept(self):
-        """Envia os dados para a API para criar um novo usuário."""
+        """Envia os dados para a API para criar ou editar um usuário."""
         global access_token
         headers = {'Authorization': f'Bearer {access_token}'}
         
         dados = {
             "nome": self.input_nome.text(),
             "login": self.input_login.text(),
-            "senha": self.input_senha.text(),
             "permissao": self.input_permissao.currentText()
         }
 
+        # Adiciona a senha ao dicionário SOMENTE se o campo não estiver vazio
+        if self.input_senha.text():
+            dados['senha'] = self.input_senha.text()
+
         try:
-            # Por enquanto, só implementamos a lógica de ADICIONAR (POST)
-            if self.usuario_id is None:
+            if self.usuario_id is None: # Modo Adicionar
                 url = "http://127.0.0.1:5000/api/usuarios"
                 response = requests.post(url, headers=headers, json=dados)
-                
-                if response.status_code == 201:
-                    QMessageBox.information(self, "Sucesso", "Usuário adicionado com sucesso!")
-                    super().accept() # Fecha o diálogo com sucesso
-                else:
-                    # Levanta uma exceção com a mensagem de erro da API
-                    raise Exception(response.json().get('erro', 'Erro desconhecido'))
+                mensagem_sucesso = "Usuário adicionado com sucesso!"
+                status_esperado = 201
+            else: # Modo Editar
+                url = f"http://127.0.0.1:5000/api/usuarios/{self.usuario_id}"
+                response = requests.put(url, headers=headers, json=dados)
+                mensagem_sucesso = "Usuário atualizado com sucesso!"
+                status_esperado = 200
+            
+            if response.status_code == status_esperado:
+                QMessageBox.information(self, "Sucesso", mensagem_sucesso)
+                super().accept()
             else:
-                # TODO: Implementar a lógica de EDIÇÃO (PUT)
-                pass
+                raise Exception(response.json().get('erro', 'Erro desconhecido'))
+
         except Exception as e:
-            QMessageBox.warning(self, "Erro", f"Não foi possível adicionar o usuário: {e}")
+            QMessageBox.warning(self, "Erro", f"Não foi possível salvar o usuário: {e}")
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
@@ -688,7 +710,7 @@ class UsuariosWidget(QWidget):
         layout_botoes = QHBoxLayout()
         self.btn_adicionar = QPushButton("Adicionar Novo")
         self.btn_editar = QPushButton("Editar Selecionado")
-        self.btn_desativar = QPushButton("Desativar Selecionado")
+        self.btn_desativar = QPushButton("Desativar/Reativar") # Texto mais claro
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_desativar)
@@ -698,7 +720,9 @@ class UsuariosWidget(QWidget):
         self.tabela_usuarios.setColumnCount(4)
         self.tabela_usuarios.setHorizontalHeaderLabels(["Nome", "Login", "Permissão", "Status"])
         self.tabela_usuarios.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela_usuarios.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows) # Melhor para selecionar
         self.tabela_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.tabela_usuarios.setAlternatingRowColors(True)
 
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(layout_botoes)
@@ -706,7 +730,8 @@ class UsuariosWidget(QWidget):
 
         # Conexões
         self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
-        # TODO: Conectar os botões de editar e desativar
+        self.btn_editar.clicked.connect(self.abrir_formulario_editar)
+        self.btn_desativar.clicked.connect(self.desativar_usuario_selecionado)
 
         self.carregar_usuarios()
 
@@ -721,6 +746,7 @@ class UsuariosWidget(QWidget):
                 self.tabela_usuarios.setRowCount(len(usuarios))
                 for linha, user in enumerate(usuarios):
                     item_nome = QTableWidgetItem(user['nome'])
+                    # Guardamos o ID no primeiro item da linha para fácil acesso
                     item_nome.setData(Qt.UserRole, user['id'])
                     
                     status = "Ativo" if user['ativo'] else "Inativo"
@@ -737,9 +763,72 @@ class UsuariosWidget(QWidget):
     def abrir_formulario_adicionar(self):
         """Abre o diálogo para adicionar um novo usuário."""
         dialog = FormularioUsuarioDialog(self)
-        # Se o formulário for salvo com sucesso (retorna True), atualiza a lista
         if dialog.exec():
             self.carregar_usuarios()
+    
+    def abrir_formulario_editar(self):
+        """Abre o diálogo para editar o usuário selecionado."""
+        linha_selecionada = self.tabela_usuarios.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um usuário para editar.")
+            return
+        
+        # Pega o item da primeira coluna (onde guardamos o ID)
+        item_id = self.tabela_usuarios.item(linha_selecionada, 0)
+        usuario_id = item_id.data(Qt.UserRole)
+        
+        dialog = FormularioUsuarioDialog(self, usuario_id=usuario_id)
+        if dialog.exec():
+            self.carregar_usuarios()
+
+    def desativar_usuario_selecionado(self):
+        """Envia um pedido para desativar (soft delete) o usuário selecionado."""
+        linha_selecionada = self.tabela_usuarios.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um usuário.")
+            return
+        
+        item_id = self.tabela_usuarios.item(linha_selecionada, 0)
+        usuario_id = item_id.data(Qt.UserRole)
+        nome_usuario = self.tabela_usuarios.item(linha_selecionada, 0).text()
+        status_atual = self.tabela_usuarios.item(linha_selecionada, 3).text()
+
+        acao = "desativar" if status_atual == "Ativo" else "reativar"
+        
+        resposta = QMessageBox.question(self, f"Confirmar Ação",
+                                        f"Tem certeza que deseja {acao} o usuário '{nome_usuario}'?",
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+
+        if resposta == QMessageBox.StandardButton.Yes:
+            global access_token
+            # --- DEBUG: Adicione esta linha para ver o ID no terminal ---
+            print(f"Tentando {acao} usuário com ID: {usuario_id}")
+            
+            url = f"http://127.0.0.1:5000/api/usuarios/{usuario_id}"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            try:
+                response = requests.delete(url, headers=headers)
+                
+                # Resposta de sucesso
+                if response.status_code == 200:
+                    QMessageBox.information(self, "Sucesso", response.json()['mensagem'])
+                    self.carregar_usuarios()
+                # Resposta de erro (mas controlada)
+                else:
+                    mensagem_erro = f"O servidor retornou um erro: {response.status_code}."
+                    try:
+                        # Tenta obter a mensagem de erro específica do JSON
+                        detalhe_erro = response.json().get('erro')
+                        if detalhe_erro:
+                            mensagem_erro += f"\nDetalhe: {detalhe_erro}"
+                    except requests.exceptions.JSONDecodeError:
+                        # Se não for JSON, apenas mostra o texto bruto da resposta
+                        mensagem_erro += f"\nResposta: {response.text}"
+                    
+                    QMessageBox.warning(self, "Erro", mensagem_erro)
+
+            except requests.exceptions.RequestException as e:
+                QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================

@@ -746,6 +746,61 @@ def add_novo_usuario():
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+    
+    
+@app.route('/api/usuarios/<int:id_usuario>', methods=['GET', 'PUT', 'DELETE'])
+@jwt_required()
+def usuario_por_id_endpoint(id_usuario):
+    """Lida com operações para um usuário específico (ler, editar, desativar)."""
+    # Garante que apenas administradores podem mexer nos usuários
+    claims = get_jwt()
+    if claims.get('permissao') != 'Administrador':
+        return jsonify({"erro": "Acesso negado: permissão de Administrador necessária."}), 403
+    
+    try:
+        usuario = Usuario.query.get_or_404(id_usuario)
+
+        # ---- LER UM USUÁRIO (GET) ----
+        if request.method == 'GET':
+            return jsonify({
+                'id': usuario.id_usuario,
+                'nome': usuario.nome,
+                'login': usuario.login,
+                'permissao': usuario.permissao,
+                'ativo': usuario.ativo
+            }), 200
+
+        # ---- EDITAR UM USUÁRIO (PUT) ----
+        elif request.method == 'PUT':
+            dados = request.get_json()
+            if not dados or 'nome' not in dados or 'login' not in dados or 'permissao' not in dados:
+                return jsonify({'erro': 'Dados incompletos para atualização'}), 400
+
+            # Atualiza os dados básicos
+            usuario.nome = dados['nome']
+            usuario.login = dados['login']
+            usuario.permissao = dados['permissao']
+            
+            # Atualiza a senha APENAS se uma nova for fornecida
+            if 'senha' in dados and dados['senha']:
+                usuario.set_password(dados['senha'])
+            
+            db.session.commit()
+            return jsonify({'mensagem': 'Usuário atualizado com sucesso!'}), 200
+
+        # ---- DESATIVAR/REATIVAR UM USUÁRIO (DELETE) ----
+        elif request.method == 'DELETE':
+            # Implementação de Soft Delete
+            # Em vez de apagar, apenas mudamos o status 'ativo'
+            usuario.ativo = not usuario.ativo # Inverte o status atual
+            db.session.commit()
+            
+            status = "desativado" if not usuario.ativo else "reativado"
+            return jsonify({'mensagem': f'Usuário {status} com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
 # ==============================================================================
 # Bloco de Execução Principal
 # ==============================================================================
