@@ -753,8 +753,8 @@ class RelatoriosWidget(QWidget):
         layout_botoes = QHBoxLayout()
         self.btn_gerar_pdf = QPushButton("Gerar PDF")
         self.btn_gerar_excel = QPushButton("Gerar Excel (XLSX)")
-        self.btn_gerar_pdf.setStyleSheet("font-size: 16px; padding: 12px; background-color: #d9534f; color: white;")
-        self.btn_gerar_excel.setStyleSheet("font-size: 16px; padding: 12px; background-color: #28a745; color: white;")
+        self.btn_gerar_pdf.setObjectName("btnGerarPDF")
+        self.btn_gerar_excel.setObjectName("btnGerarExcel")
         
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_gerar_pdf)
@@ -890,9 +890,12 @@ class FornecedoresWidget(QWidget):
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
 
         layout_botoes = QHBoxLayout()
-        self.btn_adicionar = QPushButton("Adicionar Novo")
-        self.btn_editar = QPushButton("Editar Selecionado")
-        self.btn_excluir = QPushButton("Excluir Selecionado")
+        self.btn_adicionar = QPushButton("➕ Adicionar Novo")
+        self.btn_editar = QPushButton("✏️ Editar Selecionado")
+        self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
+        self.btn_adicionar.setObjectName("btnAdd")
+        self.btn_editar.setObjectName("btnEdit")
+        self.btn_excluir.setObjectName("btnDelete")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
@@ -980,9 +983,12 @@ class NaturezasWidget(QWidget):
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
 
         layout_botoes = QHBoxLayout()
-        self.btn_adicionar = QPushButton("Adicionar Nova")
-        self.btn_editar = QPushButton("Editar Selecionado")
-        self.btn_excluir = QPushButton("Excluir Selecionado")
+        self.btn_adicionar = QPushButton("➕ Adicionar Novo")
+        self.btn_editar = QPushButton("✏️ Editar Selecionado")
+        self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
+        self.btn_adicionar.setObjectName("btnAdd")
+        self.btn_editar.setObjectName("btnEdit")
+        self.btn_excluir.setObjectName("btnDelete")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
@@ -1087,7 +1093,7 @@ class EntradaRapidaWidget(QWidget):
         self.input_codigo.setStyleSheet("font-size: 16px; padding: 8px;")
         
         self.btn_verificar = QPushButton("Verificar Produto")
-        self.btn_verificar.setStyleSheet("font-size: 14px; padding: 8px;")
+        self.btn_verificar.setObjectName("btnVerificar")
 
         layout_codigo = QHBoxLayout()
         layout_codigo.addWidget(self.input_codigo)
@@ -1108,7 +1114,7 @@ class EntradaRapidaWidget(QWidget):
 
         # 4. Botão para Registrar a Entrada
         self.btn_registrar = QPushButton("Registar Entrada")
-        self.btn_registrar.setStyleSheet("font-size: 16px; padding: 10px; background-color: #28a745; color: white;")
+        self.btn_registrar.setObjectName("btnRegistrarEntrada")
 
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(form_layout)
@@ -1698,9 +1704,9 @@ class DashboardWidget(QWidget):
         layout_atalhos = QHBoxLayout()
         self.btn_atalho_entrada = QPushButton("➡️ Registrar Entrada")
         self.btn_atalho_saida = QPushButton("⬅️ Registrar Saída")
-        self.btn_atalho_entrada.setStyleSheet("font-size: 16px; padding: 15px; background-color: #28a745; color: white; border-radius: 5px;")
-        self.btn_atalho_saida.setStyleSheet("font-size: 16px; padding: 15px; background-color: #dc3545; color: white; border-radius: 5px;")
-        
+        self.btn_atalho_entrada.setObjectName("btnAtalhoEntrada")
+        self.btn_atalho_saida.setObjectName("btnAtalhoSaida")
+                
         layout_atalhos.addStretch(1)
         layout_atalhos.addWidget(self.btn_atalho_entrada)
         layout_atalhos.addWidget(self.btn_atalho_saida)

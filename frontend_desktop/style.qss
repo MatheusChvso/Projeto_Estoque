@@ -118,3 +118,70 @@ QHeaderView::section {
     color: white;
     font-weight: bold;
 }
+/* Adicione estas novas regras ao seu style.qss */
+
+/* Botões de Atalho do Dashboard */
+QPushButton#btnAtalhoEntrada {
+    background-color: #28a745;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+}
+QPushButton#btnAtalhoEntrada:hover { background-color: #2ebf4f; }
+
+QPushButton#btnAtalhoSaida {
+    background-color: #dc3545;
+    font-size: 16px;
+    font-weight: bold;
+    color: white;
+}
+QPushButton#btnAtalhoSaida:hover { background-color: #e44d5a; }
+
+
+/* Botões das Telas de Entrada/Saída Rápida */
+QPushButton#btnVerificar {
+    background-color: #0078d7; /* Azul Padrão */
+    font-weight: bold;
+    color: white;
+}
+QPushButton#btnVerificar:hover { background-color: #008cff; }
+
+QPushButton#btnRegistrarEntrada {
+    background-color: #28a745; /* Verde */
+    font-weight: bold;
+    color: white;
+}
+QPushButton#btnRegistrarEntrada:hover { background-color: #2ebf4f; }
+
+QPushButton#btnRegistrarSaida {
+    background-color: #dc3545; /* Vermelho */
+    font-weight: bold;
+    color: white;
+}
+
+QPushButton#btnRegistrarSaida:hover { background-color: #e44d5a; }
+
+
+/* Botões de Geração de Relatórios */
+QPushButton#btnGerarPDF {
+    background-color: #d9534f; /* Vermelho PDF */
+    font-weight: bold;
+    color: white;
+}
+QPushButton#btnGerarPDF:hover { background-color: #e4605b; }
+
+QPushButton#btnGerarExcel {
+    background-color: #28a745; /* Verde Excel */
+    font-weight: bold;
+    color: white;
+}
+QPushButton#btnGerarExcel:hover { background-color: #2ebf4f; }
+
+
+/* Estilo para os botões Salvar/Cancelar dos Diálogos */
+QDialogButtonBox QPushButton {
+    padding: 8px 20px;
+    border-radius: 5px;
+    font-weight: bold;
+    min-width: 80px;
+}
