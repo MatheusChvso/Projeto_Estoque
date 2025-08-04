@@ -572,14 +572,23 @@ def add_novo_fornecedor():
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
 
-@app.route('/api/fornecedores/<int:id_fornecedor>', methods=['PUT', 'DELETE'])
+@app.route('/api/fornecedores/<int:id_fornecedor>', methods=['GET', 'PUT', 'DELETE'])
 @jwt_required()
 def fornecedor_por_id_endpoint(id_fornecedor):
-    """Edita ou exclui um fornecedor específico."""
+    """Lida com operações para um fornecedor específico (ler, editar, apagar)."""
     try:
         fornecedor = Fornecedor.query.get_or_404(id_fornecedor)
 
-        if request.method == 'PUT':
+        # --- NOVO BLOCO DE CÓDIGO ---
+        # Lógica para o método GET (Ler um por ID)
+        if request.method == 'GET':
+            return jsonify({
+                'id': fornecedor.id_fornecedor,
+                'nome': fornecedor.nome
+            }), 200
+        # --- FIM DO NOVO BLOCO ---
+
+        elif request.method == 'PUT':
             dados = request.get_json()
             if 'nome' not in dados or not dados['nome'].strip():
                 return jsonify({'erro': 'O nome do fornecedor é obrigatório.'}), 400
@@ -636,14 +645,23 @@ def add_nova_natureza():
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
 
-@app.route('/api/naturezas/<int:id_natureza>', methods=['PUT', 'DELETE'])
+@app.route('/api/naturezas/<int:id_natureza>', methods=['GET', 'PUT', 'DELETE'])
 @jwt_required()
 def natureza_por_id_endpoint(id_natureza):
-    """Edita ou exclui uma natureza específica."""
+    """Lida com operações para uma natureza específica (ler, editar, apagar)."""
     try:
         natureza = Natureza.query.get_or_404(id_natureza)
 
-        if request.method == 'PUT':
+        # --- NOVO BLOCO DE CÓDIGO ---
+        # Lógica para o método GET (Ler uma por ID)
+        if request.method == 'GET':
+            return jsonify({
+                'id': natureza.id_natureza,
+                'nome': natureza.nome
+            }), 200
+        # --- FIM DO NOVO BLOCO ---
+
+        elif request.method == 'PUT':
             dados = request.get_json()
             if 'nome' not in dados or not dados['nome'].strip():
                 return jsonify({'erro': 'O nome da natureza é obrigatório.'}), 400
