@@ -13,6 +13,7 @@ from flask_jwt_extended import (
 )
 from datetime import datetime
 from sqlalchemy import case, or_
+from sqlalchemy.orm import joinedload
 
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
@@ -133,17 +134,14 @@ def calcular_saldo_produto(id_produto):
 @app.route('/api/produtos', methods=['GET'])
 @jwt_required()
 def get_todos_produtos():
-    """Retorna uma lista de todos os produtos, opcionalmente filtrada por um termo de busca."""
+    """Retorna uma lista de todos os produtos, incluindo os nomes dos seus fornecedores e naturezas."""
     try:
-        # Pega no parâmetro 'search' do URL, se ele existir
         termo_busca = request.args.get('search')
-
-        query = Produto.query
-
+        # O .options(joinedload(...)) é uma otimização para carregar os dados relacionados
+        # de forma mais eficiente, evitando múltiplas consultas ao banco.
+        query = Produto.query.options(joinedload(Produto.fornecedores), joinedload(Produto.naturezas))
+        
         if termo_busca:
-            # Se um termo de busca foi fornecido, filtra a consulta
-            # A função "ilike" faz uma busca case-insensitive (não diferencia maiúsculas/minúsculas)
-            # O '%' é um wildcard, então ele busca por qualquer produto que CONTENHA o termo
             query = query.filter(
                 or_(
                     Produto.nome.ilike(f"%{termo_busca}%"),
@@ -152,21 +150,28 @@ def get_todos_produtos():
             )
 
         produtos_db = query.all()
-
-        # O resto da função continua exatamente igual...
         produtos_json = []
         for produto in produtos_db:
+            # --- MUDANÇA PRINCIPAL AQUI ---
+            # Cria uma string com os nomes dos fornecedores, separados por vírgula
+            fornecedores_str = ", ".join([f.nome for f in produto.fornecedores])
+            # Cria uma string com os nomes das naturezas
+            naturezas_str = ", ".join([n.nome for n in produto.naturezas])
+
             produtos_json.append({
                 'id': produto.id_produto,
                 'nome': produto.nome,
                 'codigo': produto.codigo.strip(),
                 'descricao': produto.descricao,
-                'preco': str(produto.preco)
+                'preco': str(produto.preco),
+                'codigoB': produto.codigoB,
+                'codigoC': produto.codigoC,
+                'fornecedores': fornecedores_str, # <-- Novo campo
+                'naturezas': naturezas_str      # <-- Novo campo
             })
         return jsonify(produtos_json), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
-
 
 @app.route('/api/produtos', methods=['POST'])
 @jwt_required()

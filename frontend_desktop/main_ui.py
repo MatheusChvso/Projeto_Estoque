@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit,
     QPushButton, QVBoxLayout, QMessageBox, QMainWindow, QHBoxLayout,
     QStackedWidget, QTableWidget, QTableWidgetItem, QHeaderView, QSizePolicy,
-    QDialog, QFormLayout, QDialogButtonBox, QListWidget, QListWidgetItem
+    QDialog, QFormLayout, QDialogButtonBox, QListWidget, QListWidgetItem,
+    QAbstractItemView
 )
 from PySide6.QtGui import QPixmap, QAction, QDoubleValidator
 from PySide6.QtCore import Qt, QTimer
@@ -287,10 +288,16 @@ class ProdutosWidget(QWidget):
         self.input_pesquisa.setPlaceholderText("Buscar por nome ou código...")
         
         self.tabela_produtos = QTableWidget()
-        self.tabela_produtos.setColumnCount(4)
-        self.tabela_produtos.setHorizontalHeaderLabels(["Código", "Nome", "Descrição", "Preço"])
+        self.tabela_produtos.setColumnCount(8)
+        self.tabela_produtos.setHorizontalHeaderLabels(["Código", "Nome", "Descrição", "Preço", "Código B", "Código C", "Fornecedores", "Naturezas"])
+        self.tabela_produtos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_produtos.setAlternatingRowColors(True)
-        self.tabela_produtos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self.tabela_produtos.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)
 
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(layout_botoes)
@@ -373,6 +380,10 @@ class ProdutosWidget(QWidget):
                     self.tabela_produtos.setItem(linha, 1, QTableWidgetItem(produto['nome']))
                     self.tabela_produtos.setItem(linha, 2, QTableWidgetItem(produto['descricao']))
                     self.tabela_produtos.setItem(linha, 3, QTableWidgetItem(produto['preco']))
+                    self.tabela_produtos.setItem(linha, 4, QTableWidgetItem(produto.get('codigoB', '')))
+                    self.tabela_produtos.setItem(linha, 5, QTableWidgetItem(produto.get('codigoC', '')))
+                    self.tabela_produtos.setItem(linha, 6, QTableWidgetItem(produto.get('fornecedores', '')))
+                    self.tabela_produtos.setItem(linha, 7, QTableWidgetItem(produto.get('naturezas', '')))
             else:
                 QMessageBox.warning(self, "Erro", f"Erro ao carregar produtos: {response.json().get('erro')}")
         except requests.exceptions.RequestException as e:
@@ -592,7 +603,6 @@ class NaturezasWidget(QWidget):
 
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
-# A "moldura" da aplicação que contém a navegação e a área de conteúdo.
 # ==============================================================================
 class JanelaPrincipal(QMainWindow):
     def __init__(self):
@@ -684,7 +694,7 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.tela_naturezas)
 
 # ==============================================================================
-# 6. CLASSE DA JANELA DE LOGIN (Movida para o final)
+# 6. CLASSE DA JANELA DE LOGIN (Movida para o final para resolver NameError)
 # ==============================================================================
 class JanelaLogin(QWidget):
     def __init__(self):
