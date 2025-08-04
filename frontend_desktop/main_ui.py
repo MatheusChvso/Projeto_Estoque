@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView
 )
 from PySide6.QtGui import QPixmap, QAction, QDoubleValidator
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     # ... todos os seus imports existentes
     QComboBox
@@ -730,7 +730,139 @@ class NaturezasWidget(QWidget):
             except requests.exceptions.RequestException as e:
                 QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
+# ==============================================================================
+# Adicione esta nova classe na seção 4. WIDGETS DE CONTEÚDO
+# ==============================================================================
 
+class EntradaRapidaWidget(QWidget):
+    """Tela para registrar entradas de estoque de forma rápida por código de produto."""
+    estoque_atualizado = Signal()
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.produto_encontrado_id = None # Para guardar o ID do produto verificado
+
+        # --- Título da Tela ---
+        self.titulo = QLabel("Entrada Rápida de Estoque")
+        self.titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
+        
+        # --- Layout do Formulário ---
+        form_layout = QFormLayout()
+        form_layout.setSpacing(15)
+
+        # 1. Campo para Código do Produto
+        self.input_codigo = QLineEdit()
+        self.input_codigo.setPlaceholderText("Digite ou leia o código do produto aqui")
+        self.input_codigo.setStyleSheet("font-size: 16px; padding: 8px;")
+        
+        self.btn_verificar = QPushButton("Verificar Produto")
+        self.btn_verificar.setStyleSheet("font-size: 14px; padding: 8px;")
+
+        layout_codigo = QHBoxLayout()
+        layout_codigo.addWidget(self.input_codigo)
+        layout_codigo.addWidget(self.btn_verificar)
+        form_layout.addRow("Código do Produto:", layout_codigo)
+
+        # 2. Label para exibir o resultado da verificação
+        self.label_nome_produto = QLabel("Aguardando verificação...")
+        self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #555;")
+        form_layout.addRow("Produto Encontrado:", self.label_nome_produto)
+
+        # 3. Campo para Quantidade
+        self.input_quantidade = QLineEdit()
+        self.input_quantidade.setPlaceholderText("0")
+        self.input_quantidade.setValidator(QDoubleValidator(0, 99999, 0)) # Apenas números inteiros
+        self.input_quantidade.setStyleSheet("font-size: 16px; padding: 8px;")
+        form_layout.addRow("Quantidade a Adicionar:", self.input_quantidade)
+
+        # 4. Botão para Registrar a Entrada
+        self.btn_registrar = QPushButton("Registar Entrada")
+        self.btn_registrar.setStyleSheet("font-size: 16px; padding: 10px; background-color: #28a745; color: white;")
+
+        self.layout.addWidget(self.titulo)
+        self.layout.addLayout(form_layout)
+        self.layout.addWidget(self.btn_registrar, 0, Qt.AlignmentFlag.AlignRight)
+        self.layout.addStretch(1) # Empurra tudo para cima
+
+        # --- Conexões dos Sinais e Slots ---
+        self.btn_verificar.clicked.connect(self.verificar_produto)
+        # Permite verificar pressionando Enter no campo de código
+        self.input_codigo.returnPressed.connect(self.verificar_produto) 
+        self.btn_registrar.clicked.connect(self.registrar_entrada)
+
+        # Inicializa o estado da UI
+        self.resetar_formulario()
+
+    def verificar_produto(self):
+        """Busca o produto na API usando o código digitado."""
+        codigo_produto = self.input_codigo.text().strip()
+        if not codigo_produto:
+            QMessageBox.warning(self, "Atenção", "O campo de código não pode estar vazio.")
+            return
+
+        global access_token
+        url = f"http://127.0.0.1:5000/api/produtos/codigo/{codigo_produto}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                dados_produto = response.json()
+                self.produto_encontrado_id = dados_produto['id']
+                nome = dados_produto['nome']
+                self.label_nome_produto.setText(f"{nome}")
+                self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #28a745;") # Verde
+                self.input_quantidade.setEnabled(True)
+                self.btn_registrar.setEnabled(True)
+                self.input_quantidade.setFocus() # Move o cursor para o campo de quantidade
+            else:
+                self.label_nome_produto.setText("Produto não encontrado!")
+                self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545;") # Vermelho
+                self.produto_encontrado_id = None
+                self.input_quantidade.setEnabled(False)
+                self.btn_registrar.setEnabled(False)
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+    def registrar_entrada(self):
+        """Envia os dados para a API para registrar a movimentação de entrada."""
+        quantidade = self.input_quantidade.text()
+        if not self.produto_encontrado_id or not quantidade or int(quantidade) <= 0:
+            QMessageBox.warning(self, "Dados Inválidos", "Verifique o produto e insira uma quantidade válida maior que zero.")
+            return
+
+        global access_token
+        url = "http://127.0.0.1:5000/api/estoque/entrada"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        dados = {
+            "id_produto": self.produto_encontrado_id,
+            "quantidade": int(quantidade)
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=dados)
+            if response.status_code == 201:
+                self.estoque_atualizado.emit()
+                QMessageBox.information(self, "Sucesso", "Entrada de estoque registrada com sucesso!")
+                self.resetar_formulario()
+            else:
+                erro = response.json().get('erro', 'Erro desconhecido.')
+                QMessageBox.warning(self, "Erro", f"Não foi possível registrar a entrada: {erro}")
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+    def resetar_formulario(self):
+        """Limpa todos os campos e redefine o estado inicial da tela."""
+        self.produto_encontrado_id = None
+        self.input_codigo.clear()
+        self.input_quantidade.clear()
+        self.label_nome_produto.setText("Aguardando verificação...")
+        self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #555;")
+        self.input_quantidade.setEnabled(False)
+        self.btn_registrar.setEnabled(False)
+        self.input_codigo.setFocus() # Coloca o cursor no campo de código
 
 # TRECHO 2: ADICIONAR esta nova classe ao main_ui.py
 
@@ -912,6 +1044,7 @@ class JanelaPrincipal(QMainWindow):
         self.btn_dashboard = QPushButton("Dashboard")
         self.btn_produtos = QPushButton("Produtos")
         self.btn_estoque = QPushButton("Estoque")
+        self.btn_entrada_rapida = QPushButton("Entrada Rápida")
         self.btn_fornecedores = QPushButton("Fornecedores")
         self.btn_naturezas = QPushButton("Naturezas")
         self.btn_usuarios = QPushButton("Usuários")
@@ -919,6 +1052,7 @@ class JanelaPrincipal(QMainWindow):
         self.layout_painel_lateral.addWidget(self.btn_dashboard)
         self.layout_painel_lateral.addWidget(self.btn_produtos)
         self.layout_painel_lateral.addWidget(self.btn_estoque)
+        self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
         self.layout_painel_lateral.addWidget(self.btn_fornecedores)
         self.layout_painel_lateral.addWidget(self.btn_naturezas)
         # O botão de usuários será adicionado depois, na função de carregar dados
@@ -934,6 +1068,7 @@ class JanelaPrincipal(QMainWindow):
         self.tela_dashboard.setStyleSheet("font-size: 18px; color: #555;")
         self.tela_produtos = ProdutosWidget()
         self.tela_estoque = EstoqueWidget()
+        self.tela_entrada_rapida = EntradaRapidaWidget()
         self.tela_fornecedores = FornecedoresWidget()
         self.tela_naturezas = NaturezasWidget()
         self.tela_usuarios = UsuariosWidget()
@@ -942,6 +1077,7 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.addWidget(self.tela_dashboard)
         self.stacked_widget.addWidget(self.tela_produtos)
         self.stacked_widget.addWidget(self.tela_estoque)
+        self.stacked_widget.addWidget(self.tela_entrada_rapida)
         self.stacked_widget.addWidget(self.tela_fornecedores)
         self.stacked_widget.addWidget(self.tela_naturezas)
         self.stacked_widget.addWidget(self.tela_usuarios)
@@ -951,6 +1087,8 @@ class JanelaPrincipal(QMainWindow):
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
         self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
+        self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
+        self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.carregar_dados_estoque)
         self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
         self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
 
@@ -958,6 +1096,11 @@ class JanelaPrincipal(QMainWindow):
 
     def mostrar_tela_dashboard(self):
         self.stacked_widget.setCurrentWidget(self.tela_dashboard)
+        
+    def mostrar_tela_entrada_rapida(self):
+        """Mostra a tela de entrada rápida e reseta seu estado."""
+        self.tela_entrada_rapida.resetar_formulario()
+        self.stacked_widget.setCurrentWidget(self.tela_entrada_rapida)
 
     def mostrar_tela_produtos(self):
         self.stacked_widget.setCurrentWidget(self.tela_produtos)
