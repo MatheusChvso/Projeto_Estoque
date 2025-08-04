@@ -15,206 +15,16 @@ from PySide6.QtCore import Qt, QTimer
 
 # ==============================================================================
 # 2. VARIÁVEIS GLOBAIS
-# Variáveis que precisam de ser acedidas por diferentes partes da aplicação.
 # ==============================================================================
 access_token = None
 
 # ==============================================================================
-# 3. CLASSE DA JANELA DE LOGIN
-# Responsável por autenticar o usuário e iniciar a aplicação principal.
+# 3. JANELAS DE DIÁLOGO (FORMULÁRIOS)
+# Definidas primeiro para que possam ser chamadas pelas telas principais.
 # ==============================================================================
-class JanelaLogin(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Meu Sistema de Gestão - Login")
-        self.resize(300, 350)
-        self.janela_principal = None # Referência para a janela principal
 
-        # Criação da interface de login
-        layout = QVBoxLayout()
-        logo_pixmap = QPixmap("logo.png")
-        logo_redimensionada = logo_pixmap.scaled(250, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.label_logo = QLabel()
-        self.label_logo.setPixmap(logo_redimensionada)
-        self.label_logo.setAlignment(Qt.AlignCenter)
-        self.input_login = QLineEdit()
-        self.input_login.setPlaceholderText("Digite seu login")
-        self.input_senha = QLineEdit()
-        self.input_senha.setPlaceholderText("Digite sua senha")
-        self.input_senha.setEchoMode(QLineEdit.EchoMode.Password)
-        self.botao_login = QPushButton("Entrar")
-
-        # Adiciona os widgets ao layout
-        layout.addWidget(self.label_logo)
-        layout.addWidget(QLabel("Login:"))
-        layout.addWidget(self.input_login)
-        layout.addWidget(QLabel("Senha:"))
-        layout.addWidget(self.input_senha)
-        layout.addWidget(self.botao_login)
-        self.setLayout(layout)
-
-        # Conecta o clique do botão à função de login
-        self.botao_login.clicked.connect(self.fazer_login)
-
-    def fazer_login(self):
-        """Envia as credenciais para a API e trata a resposta."""
-        global access_token
-        login = self.input_login.text()
-        senha = self.input_senha.text()
-
-        if not login or not senha:
-            QMessageBox.warning(self, "Erro de Entrada", "Os campos de login e senha não podem estar vazios.")
-            return
-
-        url = "http://127.0.0.1:5000/api/login"
-        dados = {"login": login, "senha": senha}
-
-        try:
-            response = requests.post(url, json=dados)
-            if response.status_code == 200:
-                access_token = response.json()['access_token']
-                print("Login bem-sucedido! Token guardado.")
-                self.close() # Fecha a janela de login
-                self.janela_principal = JanelaPrincipal() # Cria a janela principal
-                self.janela_principal.show() # Exibe a janela principal
-            else:
-                erro_msg = response.json().get('erro', 'Ocorreu um erro desconhecido.')
-                QMessageBox.warning(self, "Erro de Login", f"Falha no login: {erro_msg}")
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
-
-# ==============================================================================
-# 4. JANELA DE DIÁLOGO PARA FORMULÁRIO DE PRODUTO
-# Esta classe é definida ANTES da ProdutosWidget porque é usada por ela.
-# ==============================================================================
 class FormularioProdutoDialog(QDialog):
-    def __init__(self, parent=None, produto_id=None):
-        super().__init__(parent)
-        self.produto_id = produto_id
-        self.setWindowTitle("Adicionar Novo Produto" if self.produto_id is None else "Editar Produto")
-        self.setMinimumSize(400, 500)
-        self.layout = QFormLayout(self)
-
-        # Criação dos campos de entrada do formulário
-        self.input_codigo = QLineEdit()
-        self.input_nome = QLineEdit()
-        self.input_descricao = QLineEdit()
-        self.input_preco = QLineEdit()
-        self.input_preco.setValidator(QDoubleValidator(0.00, 999999.99, 2))
-        self.input_codigoB = QLineEdit()
-        self.input_codigoC = QLineEdit()
-        self.lista_fornecedores = QListWidget()
-        self.lista_fornecedores.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-
-        # Adiciona os campos ao layout do formulário
-        self.layout.addRow("Código:", self.input_codigo)
-        self.layout.addRow("Nome:", self.input_nome)
-        self.layout.addRow("Descrição:", self.input_descricao)
-        self.layout.addRow("Preço:", self.input_preco)
-        self.layout.addRow("Código B:", self.input_codigoB)
-        self.layout.addRow("Código C:", self.input_codigoC)
-        self.layout.addRow("Fornecedores:", self.lista_fornecedores)
-
-        # Botões padrão de Salvar e Cancelar
-        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        self.botoes.accepted.connect(self.accept)
-        self.botoes.rejected.connect(self.reject)
-        self.layout.addWidget(self.botoes)
-
-        # Carrega dados necessários para o formulário
-        self.carregar_listas_de_apoio()
-        if self.produto_id:
-            self.carregar_dados_produto()
-
-    def carregar_listas_de_apoio(self):
-        """Busca a lista de todos os fornecedores para preencher as opções."""
-        global access_token
-        url = "http://127.0.0.1:5000/api/fornecedores"
-        headers = {'Authorization': f'Bearer {access_token}'}
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                fornecedores = response.json()
-                for forn in fornecedores:
-                    item = QListWidgetItem(forn['nome'])
-                    item.setData(Qt.UserRole, forn['id']) # Guarda o ID "escondido"
-                    self.lista_fornecedores.addItem(item)
-            else:
-                QMessageBox.warning(self, "Erro", "Não foi possível carregar a lista de fornecedores.")
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar listas: {e}")
-
-    def carregar_dados_produto(self):
-        """Se estiver em modo de edição, busca os dados do produto e preenche o formulário."""
-        global access_token
-        url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
-        headers = {'Authorization': f'Bearer {access_token}'}
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                dados = response.json()
-                self.input_codigo.setText(dados.get('codigo', ''))
-                self.input_nome.setText(dados.get('nome', ''))
-                self.input_descricao.setText(dados.get('descricao', ''))
-                self.input_preco.setText(dados.get('preco', '0.00'))
-                self.input_codigoB.setText(dados.get('codigoB', ''))
-                self.input_codigoC.setText(dados.get('codigoC', ''))
-                # TODO: Marcar os fornecedores que já estão associados a este produto
-            else:
-                QMessageBox.warning(self, "Erro", "Não foi possível carregar os dados do produto.")
-                self.close()
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar dados: {e}")
-            self.close()
-
-    def accept(self):
-        """Chamada quando o botão 'Salvar' é clicado. Envia os dados para a API."""
-        global access_token
-        headers = {'Authorization': f'Bearer {access_token}'}
-        dados_produto = {
-            "codigo": self.input_codigo.text(),
-            "nome": self.input_nome.text(),
-            "descricao": self.input_descricao.text(),
-            "preco": self.input_preco.text().replace(',', '.'),
-            "codigoB": self.input_codigoB.text(),
-            "codigoC": self.input_codigoC.text()
-        }
-        
-        produto_salvo_id = None
-        try:
-            if self.produto_id is None: # Modo Adicionar
-                url_produto = "http://127.0.0.1:5000/api/produtos"
-                response = requests.post(url_produto, headers=headers, json=dados_produto)
-                if response.status_code == 201:
-                    produto_salvo_id = response.json().get('id_produto_criado')
-                else:
-                    raise Exception(response.json().get('erro', 'Erro desconhecido'))
-            else: # Modo Editar
-                url_produto = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
-                response = requests.put(url_produto, headers=headers, json=dados_produto)
-                if response.status_code == 200:
-                    produto_salvo_id = self.produto_id
-                else:
-                    raise Exception(response.json().get('erro', 'Erro desconhecido'))
-
-            if produto_salvo_id:
-                # TODO: Limpar associações antigas antes de adicionar as novas no modo de edição
-                itens_selecionados = self.lista_fornecedores.selectedItems()
-                for item in itens_selecionados:
-                    id_fornecedor = item.data(Qt.UserRole)
-                    url_assoc = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}/fornecedores"
-                    requests.post(url_assoc, headers=headers, json={'id_fornecedor': id_fornecedor})
-            
-            QMessageBox.information(self, "Sucesso", "Produto salvo com sucesso!")
-            super().accept() # Fecha o diálogo com sucesso
-        except Exception as e:
-            QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
-
-
-# ==============================================================================
-# JANELA DE DIÁLOGO PARA FORMULÁRIO DE FORNECEDOR
-# ==============================================================================
-class FormularioProdutoDialog(QDialog):
+    """Janela de formulário para Adicionar ou Editar um Produto."""
     def __init__(self, parent=None, produto_id=None):
         super().__init__(parent)
         self.produto_id = produto_id
@@ -222,7 +32,6 @@ class FormularioProdutoDialog(QDialog):
         self.setMinimumSize(450, 600)
         self.layout = QFormLayout(self)
 
-        # Campos de texto
         self.input_codigo = QLineEdit()
         self.input_nome = QLineEdit()
         self.input_descricao = QLineEdit()
@@ -230,17 +39,13 @@ class FormularioProdutoDialog(QDialog):
         self.input_preco.setValidator(QDoubleValidator(0.00, 999999.99, 2))
         self.input_codigoB = QLineEdit()
         self.input_codigoC = QLineEdit()
-
-        # Listas de seleção
         self.lista_fornecedores = QListWidget()
         self.lista_fornecedores.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        self.lista_fornecedores.setMaximumHeight(100) # Define uma altura máxima para a lista
-
+        self.lista_fornecedores.setMaximumHeight(100)
         self.lista_naturezas = QListWidget()
         self.lista_naturezas.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        self.lista_naturezas.setMaximumHeight(100) # Define uma altura máxima para a lista
+        self.lista_naturezas.setMaximumHeight(100)
 
-        # Adiciona os campos ao layout
         self.layout.addRow("Código:", self.input_codigo)
         self.layout.addRow("Nome:", self.input_nome)
         self.layout.addRow("Descrição:", self.input_descricao)
@@ -260,11 +65,9 @@ class FormularioProdutoDialog(QDialog):
             self.carregar_dados_produto()
 
     def carregar_listas_de_apoio(self):
-        """Busca as listas de fornecedores e naturezas para preencher as opções."""
         global access_token
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
-            # Carrega Fornecedores
             url_forn = "http://127.0.0.1:5000/api/fornecedores"
             response_forn = requests.get(url_forn, headers=headers)
             if response_forn.status_code == 200:
@@ -273,7 +76,6 @@ class FormularioProdutoDialog(QDialog):
                     item.setData(Qt.UserRole, forn['id'])
                     self.lista_fornecedores.addItem(item)
             
-            # Carrega Naturezas
             url_nat = "http://127.0.0.1:5000/api/naturezas"
             response_nat = requests.get(url_nat, headers=headers)
             if response_nat.status_code == 200:
@@ -285,7 +87,6 @@ class FormularioProdutoDialog(QDialog):
             QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar listas de apoio: {e}")
 
     def carregar_dados_produto(self):
-        """No modo de edição, busca os dados do produto, incluindo suas associações."""
         global access_token
         url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
         headers = {'Authorization': f'Bearer {access_token}'}
@@ -300,14 +101,12 @@ class FormularioProdutoDialog(QDialog):
                 self.input_codigoB.setText(dados.get('codigoB', ''))
                 self.input_codigoC.setText(dados.get('codigoC', ''))
 
-                # Marca os fornecedores já associados
                 ids_fornecedores_associados = {f['id'] for f in dados.get('fornecedores', [])}
                 for i in range(self.lista_fornecedores.count()):
                     item = self.lista_fornecedores.item(i)
                     if item.data(Qt.UserRole) in ids_fornecedores_associados:
                         item.setSelected(True)
 
-                # Marca as naturezas já associadas
                 ids_naturezas_associadas = {n['id'] for n in dados.get('naturezas', [])}
                 for i in range(self.lista_naturezas.count()):
                     item = self.lista_naturezas.item(i)
@@ -321,7 +120,6 @@ class FormularioProdutoDialog(QDialog):
             self.close()
 
     def accept(self):
-        """Salva o produto e depois atualiza as suas associações."""
         global access_token
         headers = {'Authorization': f'Bearer {access_token}'}
         dados_produto = {
@@ -345,12 +143,10 @@ class FormularioProdutoDialog(QDialog):
 
             if produto_salvo_id:
                 # TODO: No modo de edição, primeiro limpar as associações antigas
-                # Associa os fornecedores selecionados
                 for item in self.lista_fornecedores.selectedItems():
                     url = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}/fornecedores"
                     requests.post(url, headers=headers, json={'id_fornecedor': item.data(Qt.UserRole)})
                 
-                # Associa as naturezas selecionadas
                 for item in self.lista_naturezas.selectedItems():
                     url = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}/naturezas"
                     requests.post(url, headers=headers, json={'id_natureza': item.data(Qt.UserRole)})
@@ -359,6 +155,116 @@ class FormularioProdutoDialog(QDialog):
             super().accept()
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
+
+class FormularioFornecedorDialog(QDialog):
+    """Janela de formulário para Adicionar ou Editar um Fornecedor."""
+    def __init__(self, parent=None, fornecedor_id=None):
+        super().__init__(parent)
+        self.fornecedor_id = fornecedor_id
+        self.setWindowTitle("Adicionar Novo Fornecedor" if self.fornecedor_id is None else "Editar Fornecedor")
+
+        self.layout = QFormLayout(self)
+        self.input_nome = QLineEdit()
+        self.layout.addRow("Nome:", self.input_nome)
+
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        self.botoes.accepted.connect(self.accept)
+        self.botoes.rejected.connect(self.reject)
+        self.layout.addWidget(self.botoes)
+
+        if self.fornecedor_id:
+            self.carregar_dados_fornecedor()
+
+    def carregar_dados_fornecedor(self):
+        global access_token
+        url = f"http://127.0.0.1:5000/api/fornecedores/{self.fornecedor_id}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                self.input_nome.setText(response.json().get('nome'))
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar dados do fornecedor.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar: {e}")
+
+    def accept(self):
+        global access_token
+        headers = {'Authorization': f'Bearer {access_token}'}
+        dados = {"nome": self.input_nome.text()}
+        try:
+            if self.fornecedor_id is None:
+                response = requests.post("http://127.0.0.1:5000/api/fornecedores", headers=headers, json=dados)
+                if response.status_code == 201:
+                    QMessageBox.information(self, "Sucesso", "Fornecedor adicionado com sucesso!")
+                    super().accept()
+                else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
+            else:
+                url = f"http://127.0.0.1:5000/api/fornecedores/{self.fornecedor_id}"
+                response = requests.put(url, headers=headers, json=dados)
+                if response.status_code == 200:
+                    QMessageBox.information(self, "Sucesso", "Fornecedor atualizado com sucesso!")
+                    super().accept()
+                else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
+        except Exception as e:
+            QMessageBox.warning(self, "Erro", f"Não foi possível salvar o fornecedor: {e}")
+
+class FormularioNaturezaDialog(QDialog):
+    """Janela de formulário para Adicionar ou Editar uma Natureza."""
+    def __init__(self, parent=None, natureza_id=None):
+        super().__init__(parent)
+        self.natureza_id = natureza_id
+        self.setWindowTitle("Adicionar Nova Natureza" if self.natureza_id is None else "Editar Natureza")
+
+        self.layout = QFormLayout(self)
+        self.input_nome = QLineEdit()
+        self.layout.addRow("Nome:", self.input_nome)
+
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        self.botoes.accepted.connect(self.accept)
+        self.botoes.rejected.connect(self.reject)
+        self.layout.addWidget(self.botoes)
+
+        if self.natureza_id:
+            self.carregar_dados_natureza()
+
+    def carregar_dados_natureza(self):
+        global access_token
+        url = f"http://127.0.0.1:5000/api/naturezas/{self.natureza_id}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                self.input_nome.setText(response.json().get('nome'))
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar dados da natureza.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar: {e}")
+
+    def accept(self):
+        global access_token
+        headers = {'Authorization': f'Bearer {access_token}'}
+        dados = {"nome": self.input_nome.text()}
+        try:
+            if self.natureza_id is None:
+                response = requests.post("http://127.0.0.1:5000/api/naturezas", headers=headers, json=dados)
+                if response.status_code == 201:
+                    QMessageBox.information(self, "Sucesso", "Natureza adicionada com sucesso!")
+                    super().accept()
+                else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
+            else:
+                url = f"http://127.0.0.1:5000/api/naturezas/{self.natureza_id}"
+                response = requests.put(url, headers=headers, json=dados)
+                if response.status_code == 200:
+                    QMessageBox.information(self, "Sucesso", "Natureza atualizada com sucesso!")
+                    super().accept()
+                else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
+        except Exception as e:
+            QMessageBox.warning(self, "Erro", f"Não foi possível salvar a natureza: {e}")
+
+# ==============================================================================
+# 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
+# ==============================================================================
 
 class ProdutosWidget(QWidget):
     """Tela para gerir (CRUD) os produtos."""
@@ -506,10 +412,8 @@ class EstoqueWidget(QWidget):
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
-# ==============================================================================
-# WIDGET DA TELA DE FORNECEDORES
-# ==============================================================================
 class FornecedoresWidget(QWidget):
+    """Tela para gerir (CRUD) os fornecedores."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
@@ -526,7 +430,7 @@ class FornecedoresWidget(QWidget):
         layout_botoes.addStretch(1)
 
         self.tabela_fornecedores = QTableWidget()
-        self.tabela_fornecedores.setColumnCount(1) # Apenas a coluna Nome
+        self.tabela_fornecedores.setColumnCount(1)
         self.tabela_fornecedores.setHorizontalHeaderLabels(["Nome"])
         self.tabela_fornecedores.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
@@ -534,13 +438,13 @@ class FornecedoresWidget(QWidget):
         self.layout.addLayout(layout_botoes)
         self.layout.addWidget(self.tabela_fornecedores)
 
-        # Conexões
         self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
+        self.btn_editar.clicked.connect(self.abrir_formulario_editar)
+        self.btn_excluir.clicked.connect(self.excluir_fornecedor_selecionado)
 
         self.carregar_fornecedores()
 
     def carregar_fornecedores(self):
-        """Busca os fornecedores na API e preenche a tabela."""
         global access_token
         url = "http://127.0.0.1:5000/api/fornecedores"
         headers = {'Authorization': f'Bearer {access_token}'}
@@ -550,7 +454,6 @@ class FornecedoresWidget(QWidget):
                 fornecedores = response.json()
                 self.tabela_fornecedores.setRowCount(len(fornecedores))
                 for linha, forn in enumerate(fornecedores):
-                    # Guarda o ID no item para uso futuro (editar/excluir)
                     item_nome = QTableWidgetItem(forn['nome'])
                     item_nome.setData(Qt.UserRole, forn['id'])
                     self.tabela_fornecedores.setItem(linha, 0, item_nome)
@@ -560,17 +463,46 @@ class FornecedoresWidget(QWidget):
             print(f"Erro de Conexão: {e}")
 
     def abrir_formulario_adicionar(self):
-        """Abre o diálogo para adicionar um novo fornecedor."""
         dialog = FormularioFornecedorDialog(self)
         if dialog.exec():
-            # Se o formulário foi salvo com sucesso, atualiza a lista
             self.carregar_fornecedores()
 
+    def abrir_formulario_editar(self):
+        linha_selecionada = self.tabela_fornecedores.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um fornecedor para editar.")
+            return
+        item = self.tabela_fornecedores.item(linha_selecionada, 0)
+        fornecedor_id = item.data(Qt.UserRole)
+        dialog = FormularioFornecedorDialog(self, fornecedor_id=fornecedor_id)
+        if dialog.exec():
+            self.carregar_fornecedores()
 
-# ==============================================================================
-# WIDGET DA TELA DE NATUREZAS
-# ==============================================================================
+    def excluir_fornecedor_selecionado(self):
+        linha_selecionada = self.tabela_fornecedores.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um fornecedor para excluir.")
+            return
+        item = self.tabela_fornecedores.item(linha_selecionada, 0)
+        fornecedor_id = item.data(Qt.UserRole)
+        nome_fornecedor = item.text()
+        resposta = QMessageBox.question(self, "Confirmar Exclusão", f"Tem a certeza de que deseja excluir o fornecedor '{nome_fornecedor}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resposta == QMessageBox.StandardButton.Yes:
+            global access_token
+            url = f"http://127.0.0.1:5000/api/fornecedores/{fornecedor_id}"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            try:
+                response = requests.delete(url, headers=headers)
+                if response.status_code == 200:
+                    QMessageBox.information(self, "Sucesso", "Fornecedor excluído com sucesso!")
+                    self.carregar_fornecedores()
+                else:
+                    QMessageBox.warning(self, "Erro", f"Não foi possível excluir: {response.json().get('erro')}")
+            except requests.exceptions.RequestException as e:
+                QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
 class NaturezasWidget(QWidget):
+    """Tela para gerir (CRUD) as naturezas."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
@@ -596,6 +528,9 @@ class NaturezasWidget(QWidget):
         self.layout.addWidget(self.tabela_naturezas)
 
         self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
+        self.btn_editar.clicked.connect(self.abrir_formulario_editar)
+        self.btn_excluir.clicked.connect(self.excluir_natureza_selecionada)
+
         self.carregar_naturezas()
 
     def carregar_naturezas(self):
@@ -620,8 +555,43 @@ class NaturezasWidget(QWidget):
         dialog = FormularioNaturezaDialog(self)
         if dialog.exec():
             self.carregar_naturezas()
+
+    def abrir_formulario_editar(self):
+        linha_selecionada = self.tabela_naturezas.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione uma natureza para editar.")
+            return
+        item = self.tabela_naturezas.item(linha_selecionada, 0)
+        natureza_id = item.data(Qt.UserRole)
+        dialog = FormularioNaturezaDialog(self, natureza_id=natureza_id)
+        if dialog.exec():
+            self.carregar_naturezas()
+
+    def excluir_natureza_selecionada(self):
+        linha_selecionada = self.tabela_naturezas.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione uma natureza para excluir.")
+            return
+        item = self.tabela_naturezas.item(linha_selecionada, 0)
+        natureza_id = item.data(Qt.UserRole)
+        nome_natureza = item.text()
+        resposta = QMessageBox.question(self, "Confirmar Exclusão", f"Tem a certeza de que deseja excluir a natureza '{nome_natureza}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if resposta == QMessageBox.StandardButton.Yes:
+            global access_token
+            url = f"http://127.0.0.1:5000/api/naturezas/{natureza_id}"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            try:
+                response = requests.delete(url, headers=headers)
+                if response.status_code == 200:
+                    QMessageBox.information(self, "Sucesso", "Natureza excluída com sucesso!")
+                    self.carregar_naturezas()
+                else:
+                    QMessageBox.warning(self, "Erro", f"Não foi possível excluir: {response.json().get('erro')}")
+            except requests.exceptions.RequestException as e:
+                QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
 # ==============================================================================
-# 6. CLASSE DA JANELA PRINCIPAL
+# 5. CLASSE DA JANELA PRINCIPAL
 # A "moldura" da aplicação que contém a navegação e a área de conteúdo.
 # ==============================================================================
 class JanelaPrincipal(QMainWindow):
@@ -641,7 +611,6 @@ class JanelaPrincipal(QMainWindow):
             QMenuBar { background-color: #dcdcdc; color: #333; }
         """)
 
-        # Criação da Barra de Menus
         menu_bar = self.menuBar()
         menu_arquivo = menu_bar.addMenu("&Arquivo")
         acao_sair = QAction("Sair", self)
@@ -651,12 +620,10 @@ class JanelaPrincipal(QMainWindow):
         self.acao_produtos = QAction("Produtos...", self)
         menu_cadastros.addAction(self.acao_produtos)
 
-        # Criação do Layout Principal
         widget_central = QWidget()
         self.setCentralWidget(widget_central)
         layout_principal = QHBoxLayout(widget_central)
 
-        # Criação do Painel de Navegação Lateral
         painel_lateral = QWidget()
         painel_lateral.setObjectName("painelLateral")
         painel_lateral.setFixedWidth(200)
@@ -677,7 +644,6 @@ class JanelaPrincipal(QMainWindow):
         layout_painel_lateral.addStretch(1)
         layout_principal.addWidget(painel_lateral)
 
-        # Criação da Área de Conteúdo Dinâmica
         self.stacked_widget = QStackedWidget()
         layout_principal.addWidget(self.stacked_widget)
         self.tela_dashboard = QLabel("Bem-vindo ao Sistema!\n\nSelecione uma opção no menu lateral para começar.")
@@ -693,7 +659,6 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.addWidget(self.tela_fornecedores)
         self.stacked_widget.addWidget(self.tela_naturezas)
 
-        # Conexão dos Sinais (Cliques) aos Slots (Funções)
         self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
@@ -713,14 +678,68 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.tela_estoque)
         
     def mostrar_tela_fornecedores(self):
-        self.stacked_widget.setCurrentWidget(self.tela_fornecedores)    
+        self.stacked_widget.setCurrentWidget(self.tela_fornecedores)
         
     def mostrar_tela_naturezas(self):
         self.stacked_widget.setCurrentWidget(self.tela_naturezas)
 
 # ==============================================================================
+# 6. CLASSE DA JANELA DE LOGIN (Movida para o final)
+# ==============================================================================
+class JanelaLogin(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Meu Sistema de Gestão - Login")
+        self.resize(300, 350)
+        self.janela_principal = None
+
+        layout = QVBoxLayout()
+        logo_pixmap = QPixmap("logo.png")
+        logo_redimensionada = logo_pixmap.scaled(250, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.label_logo = QLabel()
+        self.label_logo.setPixmap(logo_redimensionada)
+        self.label_logo.setAlignment(Qt.AlignCenter)
+        self.input_login = QLineEdit()
+        self.input_login.setPlaceholderText("Digite seu login")
+        self.input_senha = QLineEdit()
+        self.input_senha.setPlaceholderText("Digite sua senha")
+        self.input_senha.setEchoMode(QLineEdit.EchoMode.Password)
+        self.botao_login = QPushButton("Entrar")
+
+        layout.addWidget(self.label_logo)
+        layout.addWidget(QLabel("Login:"))
+        layout.addWidget(self.input_login)
+        layout.addWidget(QLabel("Senha:"))
+        layout.addWidget(self.input_senha)
+        layout.addWidget(self.botao_login)
+        self.setLayout(layout)
+        self.botao_login.clicked.connect(self.fazer_login)
+
+    def fazer_login(self):
+        global access_token
+        login = self.input_login.text()
+        senha = self.input_senha.text()
+        if not login or not senha:
+            QMessageBox.warning(self, "Erro de Entrada", "Os campos de login e senha não podem estar vazios.")
+            return
+        url = "http://127.0.0.1:5000/api/login"
+        dados = {"login": login, "senha": senha}
+        try:
+            response = requests.post(url, json=dados)
+            if response.status_code == 200:
+                access_token = response.json()['access_token']
+                print("Login bem-sucedido! Token guardado.")
+                self.close()
+                self.janela_principal = JanelaPrincipal()
+                self.janela_principal.show()
+            else:
+                erro_msg = response.json().get('erro', 'Ocorreu um erro desconhecido.')
+                QMessageBox.warning(self, "Erro de Login", f"Falha no login: {erro_msg}")
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+# ==============================================================================
 # 7. BLOCO DE EXECUÇÃO PRINCIPAL
-# O ponto de entrada que inicia a aplicação.
 # ==============================================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
