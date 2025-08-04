@@ -900,5 +900,205 @@ def get_dashboard_kpis():
 # ==============================================================================
 # Bloco de Execução Principal
 # ==============================================================================
+
+import io
+import pandas as pd
+from flask import send_file
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from datetime import datetime
+
+# --- FUNÇÕES AUXILIARES PARA GERAR ARQUIVOS ---
+
+# Substitua a sua função gerar_inventario_pdf por esta versão corrigida
+
+def gerar_inventario_pdf(dados):
+    """Gera um PDF do relatório de inventário atual."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    elementos = []
+    styles = getSampleStyleSheet()
+
+    # Título
+    titulo = Paragraph("Relatório de Inventário Atual", styles['h1'])
+    elementos.append(titulo)
+    elementos.append(Spacer(1, 12))
+
+    # Cabeçalhos da tabela
+    dados_tabela = [["Código", "Nome", "Saldo", "Preço Unit. (R$)", "Valor Total (R$)"]]
+    # Dados
+    valor_total_geral = 0
+    for item in dados:
+        # --- A CORREÇÃO ESTÁ AQUI ---
+        # Multiplicamos diretamente, sem converter para float.
+        # O objeto Decimal sabe como se multiplicar por um inteiro (saldo).
+        valor_total_item = item['saldo_atual'] * item['preco']
+        valor_total_geral += valor_total_item
+        
+        # O resto da formatação para exibição continua igual
+        dados_tabela.append([
+            item['codigo'],
+            item['nome'],
+            str(item['saldo_atual']),
+            f"{float(item['preco']):.2f}", # Usamos float() aqui apenas para formatar o texto
+            f"{float(valor_total_item):.2f}"
+        ])
+    
+    tabela = Table(dados_tabela)
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+    elementos.append(tabela)
+    elementos.append(Spacer(1, 12))
+
+    # Sumário
+    sumario = Paragraph(f"<b>Valor Total do Estoque:</b> R$ {float(valor_total_geral):.2f}", styles['h3'])
+    elementos.append(sumario)
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
+
+def gerar_historico_pdf(dados):
+    """Gera um PDF do relatório de histórico de movimentações."""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter)) # Paisagem para mais colunas
+    elementos = []
+    styles = getSampleStyleSheet()
+
+    # Título
+    titulo = Paragraph("Relatório de Histórico de Movimentações", styles['h1'])
+    elementos.append(titulo)
+    elementos.append(Spacer(1, 12))
+    
+    dados_tabela = [["Data/Hora", "Produto", "Tipo", "Qtd.", "Usuário", "Motivo da Saída"]]
+    for item in dados:
+        dados_tabela.append([
+            item['data_hora'],
+            f"{item['produto_codigo']} - {item['produto_nome']}",
+            item['tipo'],
+            str(item['quantidade']),
+            item['usuario_nome'],
+            item.get('motivo_saida', '')
+        ])
+        
+    tabela = Table(dados_tabela, colWidths=[120, 200, 60, 40, 100, 150]) # Larguras customizadas
+    tabela.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+    elementos.append(tabela)
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
+
+
+# --- ENDPOINTS DA API DE RELATÓRIOS ---
+
+@app.route('/api/relatorios/inventario', methods=['GET'])
+@jwt_required()
+def relatorio_inventario():
+    """Gera e retorna o relatório de inventário em PDF ou XLSX."""
+    formato = request.args.get('formato', 'pdf').lower()
+
+    # Lógica para buscar os dados (adaptada do endpoint de saldos)
+    produtos = Produto.query.all()
+    dados_relatorio = []
+    for produto in produtos:
+        saldo = calcular_saldo_produto(produto.id_produto)
+        dados_relatorio.append({
+            'codigo': produto.codigo.strip(),
+            'nome': produto.nome,
+            'saldo_atual': saldo,
+            'preco': produto.preco
+        })
+
+    if formato == 'xlsx':
+        df = pd.DataFrame(dados_relatorio)
+        df['valor_total'] = df['saldo_atual'] * df['preco']
+        df = df.rename(columns={'codigo': 'Código', 'nome': 'Nome', 'saldo_atual': 'Saldo', 'preco': 'Preço Unitário (R$)', 'valor_total': 'Valor Total (R$)'})
+        
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False, engine='openpyxl')
+        buffer.seek(0)
+        return send_file(buffer, download_name="relatorio_inventario.xlsx", as_attachment=True)
+
+    else: # PDF como padrão
+        pdf_buffer = gerar_inventario_pdf(dados_relatorio)
+        return send_file(pdf_buffer, download_name="relatorio_inventario.pdf", as_attachment=True)
+
+
+@app.route('/api/relatorios/movimentacoes', methods=['GET'])
+@jwt_required()
+def relatorio_movimentacoes():
+    """Gera e retorna o relatório de movimentações filtrado."""
+    formato = request.args.get('formato', 'pdf').lower()
+    data_inicio_str = request.args.get('data_inicio')
+    data_fim_str = request.args.get('data_fim')
+    tipo = request.args.get('tipo')
+
+    # Lógica para buscar os dados (a mesma de antes)
+    query = MovimentacaoEstoque.query.options(
+        joinedload(MovimentacaoEstoque.produto),
+        joinedload(MovimentacaoEstoque.usuario)
+    ).order_by(MovimentacaoEstoque.data_hora.desc())
+
+    if data_inicio_str:
+        query = query.filter(MovimentacaoEstoque.data_hora >= datetime.strptime(data_inicio_str, '%Y-%m-%d'))
+    if data_fim_str:
+        data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+        query = query.filter(MovimentacaoEstoque.data_hora <= data_fim)
+    if tipo and tipo in ["Entrada", "Saida"]:
+        query = query.filter(MovimentacaoEstoque.tipo == tipo)
+
+    movimentacoes = query.all()
+    
+    # --- CORREÇÃO ESTÁ AQUI ---
+    # Montamos os dados do relatório de forma mais segura.
+    dados_relatorio = []
+    for mov in movimentacoes:
+        dados_relatorio.append({
+            'data_hora': mov.data_hora.strftime('%d/%m/%Y %H:%M:%S'),
+            'produto_codigo': mov.produto.codigo.strip() if mov.produto else 'N/A',
+            'produto_nome': mov.produto.nome if mov.produto else 'Produto Excluído',
+            'tipo': mov.tipo,
+            'quantidade': mov.quantidade,
+            'usuario_nome': mov.usuario.nome if mov.usuario else 'Usuário Excluído',
+            'motivo_saida': mov.motivo_saida if mov.motivo_saida else '' # Usando a forma correta
+        })
+
+    if formato == 'xlsx':
+        df = pd.DataFrame(dados_relatorio)
+        df = df.rename(columns={
+            'data_hora': 'Data/Hora', 'produto_codigo': 'Cód. Produto', 'produto_nome': 'Nome Produto',
+            'tipo': 'Tipo', 'quantidade': 'Quantidade', 'usuario_nome': 'Usuário', 'motivo_saida': 'Motivo da Saída'
+        })
+        buffer = io.BytesIO()
+        df.to_excel(buffer, index=False, engine='openpyxl')
+        buffer.seek(0)
+        return send_file(buffer, download_name="relatorio_movimentacoes.xlsx", as_attachment=True)
+        
+    else: # PDF
+        pdf_buffer = gerar_historico_pdf(dados_relatorio)
+        return send_file(pdf_buffer, download_name="relatorio_movimentacoes.pdf", as_attachment=True)
+    
 if __name__ == '__main__':
     app.run(debug=True)
+    
+    
+# ==============================================================================
+# MÓDULO DE RELATÓRIOS (ADICIONE NO FINAL DO SEU app.py)
+# ==============================================================================

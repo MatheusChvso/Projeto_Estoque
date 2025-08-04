@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
     QAbstractItemView
 )
 from PySide6.QtGui import QPixmap, QAction, QDoubleValidator
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal, QDate
 from PySide6.QtWidgets import (
     # ... todos os seus imports existentes
-    QComboBox
+    QComboBox, QFileDialog
 )
-
+from PySide6.QtWidgets import QDateEdit, QCalendarWidget
 # ==============================================================================
 # 2. VARIÁVEIS GLOBAIS
 # ==============================================================================
@@ -700,6 +700,133 @@ class HistoricoWidget(QWidget):
             self.tabela_historico.setItem(linha, 4, QTableWidgetItem(str(mov['quantidade'])))
             self.tabela_historico.setItem(linha, 5, QTableWidgetItem(mov['usuario_nome']))
             self.tabela_historico.setItem(linha, 6, QTableWidgetItem(mov.get('motivo_saida', '')))
+
+
+class RelatoriosWidget(QWidget):
+    """Tela para configuração e geração de relatórios."""
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # --- Título ---
+        titulo = QLabel("Módulo de Geração de Relatórios")
+        titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
+
+        # --- Seção de Configuração ---
+        form_layout = QFormLayout()
+        form_layout.setSpacing(15)
+
+        # 1. Seletor de Tipo de Relatório
+        self.combo_tipo_relatorio = QComboBox()
+        self.combo_tipo_relatorio.addItems(["Inventário Atual", "Histórico de Movimentações"])
+        self.combo_tipo_relatorio.setStyleSheet("font-size: 16px; padding: 8px;")
+        form_layout.addRow("Selecione o Relatório:", self.combo_tipo_relatorio)
+
+        # 2. Filtros de Data (inicialmente ocultos)
+        self.label_data_inicio = QLabel("Data de Início:")
+        self.input_data_inicio = QDateEdit(self)
+        self.input_data_inicio.setCalendarPopup(True)
+        self.input_data_inicio.setDate(QDate.currentDate().addMonths(-1)) # Padrão: um mês atrás
+        self.input_data_inicio.setStyleSheet("font-size: 16px; padding: 8px;")
+
+        self.label_data_fim = QLabel("Data de Fim:")
+        self.input_data_fim = QDateEdit(self)
+        self.input_data_fim.setCalendarPopup(True)
+        self.input_data_fim.setDate(QDate.currentDate()) # Padrão: hoje
+        self.input_data_fim.setStyleSheet("font-size: 16px; padding: 8px;")
+        
+        form_layout.addRow(self.label_data_inicio, self.input_data_inicio)
+        form_layout.addRow(self.label_data_fim, self.input_data_fim)
+
+        # 3. Filtro de Tipo de Movimentação (inicialmente oculto)
+        self.label_tipo_mov = QLabel("Tipo de Movimentação:")
+        self.combo_tipo_mov = QComboBox()
+        self.combo_tipo_mov.addItems(["Todas", "Entrada", "Saida"])
+        self.combo_tipo_mov.setStyleSheet("font-size: 16px; padding: 8px;")
+        form_layout.addRow(self.label_tipo_mov, self.combo_tipo_mov)
+
+        # --- Seção de Botões de Geração ---
+        layout_botoes = QHBoxLayout()
+        self.btn_gerar_pdf = QPushButton("Gerar PDF")
+        self.btn_gerar_excel = QPushButton("Gerar Excel (XLSX)")
+        self.btn_gerar_pdf.setStyleSheet("font-size: 16px; padding: 12px; background-color: #d9534f; color: white;")
+        self.btn_gerar_excel.setStyleSheet("font-size: 16px; padding: 12px; background-color: #28a745; color: white;")
+        
+        layout_botoes.addStretch(1)
+        layout_botoes.addWidget(self.btn_gerar_pdf)
+        layout_botoes.addWidget(self.btn_gerar_excel)
+
+        # Adicionando tudo ao layout principal
+        self.layout.addWidget(titulo)
+        self.layout.addLayout(form_layout)
+        self.layout.addLayout(layout_botoes)
+        self.layout.addStretch(1)
+
+        # --- Conexões ---
+        self.combo_tipo_relatorio.currentIndexChanged.connect(self.atualizar_visibilidade_filtros)
+        self.btn_gerar_pdf.clicked.connect(lambda: self.gerar_relatorio('pdf'))
+        self.btn_gerar_excel.clicked.connect(lambda: self.gerar_relatorio('xlsx'))
+
+        # Estado inicial da UI
+        self.atualizar_visibilidade_filtros()
+
+    def atualizar_visibilidade_filtros(self):
+        """Mostra ou esconde os filtros de data com base no relatório selecionado."""
+        relatorio_selecionado = self.combo_tipo_relatorio.currentText()
+        is_historico = (relatorio_selecionado == "Histórico de Movimentações")
+        
+        self.label_data_inicio.setVisible(is_historico)
+        self.input_data_inicio.setVisible(is_historico)
+        self.label_data_fim.setVisible(is_historico)
+        self.input_data_fim.setVisible(is_historico)
+        self.label_tipo_mov.setVisible(is_historico)
+        self.combo_tipo_mov.setVisible(is_historico)
+
+    def gerar_relatorio(self, formato):
+        """Chama o endpoint correto da API com os filtros e aciona o download."""
+        relatorio_selecionado = self.combo_tipo_relatorio.currentText()
+        
+        params = {'formato': formato}
+        endpoint = ""
+        nome_arquivo_base = ""
+
+        if relatorio_selecionado == "Inventário Atual":
+            endpoint = "http://127.0.0.1:5000/api/relatorios/inventario"
+            nome_arquivo_base = "relatorio_inventario"
+        else: # Histórico de Movimentações
+            endpoint = "http://127.0.0.1:5000/api/relatorios/movimentacoes"
+            nome_arquivo_base = "relatorio_movimentacoes"
+            
+            # Adiciona os parâmetros de filtro
+            params['data_inicio'] = self.input_data_inicio.date().toString("yyyy-MM-dd")
+            params['data_fim'] = self.input_data_fim.date().toString("yyyy-MM-dd")
+            tipo_mov = self.combo_tipo_mov.currentText()
+            if tipo_mov != "Todas":
+                params['tipo'] = tipo_mov
+
+        # Abre a janela para o usuário escolher onde salvar
+        extensao = f".{formato}"
+        caminho_salvar, _ = QFileDialog.getSaveFileName(self, "Salvar Relatório", f"{nome_arquivo_base}{extensao}", f"Arquivos {formato.upper()} (*{extensao})")
+
+        if not caminho_salvar:
+            return # Usuário cancelou
+
+        try:
+            global access_token
+            headers = {'Authorization': f'Bearer {access_token}'}
+            response = requests.get(endpoint, headers=headers, params=params, stream=True)
+
+            if response.status_code == 200:
+                with open(caminho_salvar, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                QMessageBox.information(self, "Sucesso", f"Relatório salvo com sucesso em:\n{caminho_salvar}")
+            else:
+                QMessageBox.warning(self, "Erro", f"A API retornou um erro: {response.status_code}")
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível gerar o relatório: {e}")
 
 
 class EstoqueWidget(QWidget):
@@ -1388,6 +1515,7 @@ class JanelaPrincipal(QMainWindow):
         self.btn_estoque = QPushButton("Estoque")
         self.btn_entrada_rapida = QPushButton("Entrada Rápida")
         self.btn_saida_rapida = QPushButton("Saída Rápida")
+        self.btn_relatorios = QPushButton("Relatórios")
         self.btn_fornecedores = QPushButton("Fornecedores")
         self.btn_naturezas = QPushButton("Naturezas")
         self.btn_usuarios = QPushButton("Usuários")
@@ -1397,6 +1525,7 @@ class JanelaPrincipal(QMainWindow):
         self.layout_painel_lateral.addWidget(self.btn_estoque)
         self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
         self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
+        self.layout_painel_lateral.addWidget(self.btn_relatorios)
         self.layout_painel_lateral.addWidget(self.btn_fornecedores)
         self.layout_painel_lateral.addWidget(self.btn_naturezas)
         # O botão de usuários será adicionado depois, na função de carregar dados
@@ -1412,6 +1541,7 @@ class JanelaPrincipal(QMainWindow):
         self.tela_estoque = EstoqueWidget()
         self.tela_entrada_rapida = EntradaRapidaWidget()
         self.tela_saida_rapida = SaidaRapidaWidget()
+        self.tela_relatorios = RelatoriosWidget()
         self.tela_fornecedores = FornecedoresWidget()
         self.tela_naturezas = NaturezasWidget()
         self.tela_usuarios = UsuariosWidget()
@@ -1422,6 +1552,7 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.addWidget(self.tela_estoque)
         self.stacked_widget.addWidget(self.tela_entrada_rapida)
         self.stacked_widget.addWidget(self.tela_saida_rapida)
+        self.stacked_widget.addWidget(self.tela_relatorios)
         self.stacked_widget.addWidget(self.tela_fornecedores)
         self.stacked_widget.addWidget(self.tela_naturezas)
         self.stacked_widget.addWidget(self.tela_usuarios)
@@ -1439,6 +1570,7 @@ class JanelaPrincipal(QMainWindow):
         self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
         self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
         self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
+        self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
 
         self.statusBar().showMessage("Pronto.")
 
@@ -1459,6 +1591,10 @@ class JanelaPrincipal(QMainWindow):
 
     def mostrar_tela_produtos(self):
         self.stacked_widget.setCurrentWidget(self.tela_produtos)
+        
+    def mostrar_tela_relatorios(self):
+        """Mostra a tela de geração de relatórios."""
+        self.stacked_widget.setCurrentWidget(self.tela_relatorios)
 
     def mostrar_tela_estoque(self):
         """
