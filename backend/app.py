@@ -14,6 +14,7 @@ from flask_jwt_extended import (
 from datetime import datetime
 from sqlalchemy import case, or_
 from sqlalchemy.orm import joinedload
+from sqlalchemy.sql import func
 
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
@@ -843,6 +844,59 @@ def usuario_por_id_endpoint(id_usuario):
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+    
+    
+    
+# ==============================================================================
+#          ROTAS DA API PARA DASHBOARD E OUTRAS FUNÇÕES
+# ==============================================================================
+
+
+
+@app.route('/api/dashboard/kpis', methods=['GET'])
+@jwt_required()
+def get_dashboard_kpis():
+    """Calcula e retorna os principais indicadores (KPIs) para o dashboard."""
+    try:
+        # 1. Total de produtos cadastrados
+        total_produtos = db.session.query(func.count(Produto.id_produto)).scalar()
+
+        # 2. Total de fornecedores
+        total_fornecedores = db.session.query(func.count(Fornecedor.id_fornecedor)).scalar()
+
+        # 3. Valor total do estoque (mais complexo)
+        # Subquery para calcular o saldo de cada produto
+        subquery_saldos = db.session.query(
+            MovimentacaoEstoque.id_produto,
+            func.sum(
+                case(
+                    (MovimentacaoEstoque.tipo == 'Entrada', MovimentacaoEstoque.quantidade),
+                    (MovimentacaoEstoque.tipo == 'Saida', -MovimentacaoEstoque.quantidade)
+                )
+            ).label('saldo')
+        ).group_by(MovimentacaoEstoque.id_produto).subquery()
+
+        # Query principal que multiplica o saldo de cada produto pelo seu preço
+        query_valor_total = db.session.query(
+            func.sum(Produto.preco * subquery_saldos.c.saldo)
+        ).join(
+            subquery_saldos, Produto.id_produto == subquery_saldos.c.id_produto
+        )
+        
+        valor_total_estoque = query_valor_total.scalar() or 0
+
+        # Monta o JSON de resposta
+        kpis = {
+            'total_produtos': total_produtos,
+            'total_fornecedores': total_fornecedores,
+            'valor_total_estoque': float(valor_total_estoque) # Converte de Decimal para float
+        }
+        
+        return jsonify(kpis), 200
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+    
 # ==============================================================================
 # Bloco de Execução Principal
 # ==============================================================================

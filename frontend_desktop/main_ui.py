@@ -1407,9 +1407,7 @@ class JanelaPrincipal(QMainWindow):
         # --- ÁREA DE CONTEÚDO ---
         self.stacked_widget = QStackedWidget()
         layout_principal.addWidget(self.stacked_widget)
-        self.tela_dashboard = QLabel("Bem-vindo ao Sistema!\n\nSelecione uma opção no menu lateral para começar.")
-        self.tela_dashboard.setAlignment(Qt.AlignCenter)
-        self.tela_dashboard.setStyleSheet("font-size: 18px; color: #555;")
+        self.tela_dashboard = DashboardWidget() 
         self.tela_produtos = ProdutosWidget()
         self.tela_estoque = EstoqueWidget()
         self.tela_entrada_rapida = EntradaRapidaWidget()
@@ -1439,10 +1437,14 @@ class JanelaPrincipal(QMainWindow):
         self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
         self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
         self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
+        self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
+        self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
 
         self.statusBar().showMessage("Pronto.")
 
     def mostrar_tela_dashboard(self):
+        # Agora, este método carrega os dados antes de mostrar a tela
+        self.tela_dashboard.carregar_dados_dashboard()
         self.stacked_widget.setCurrentWidget(self.tela_dashboard)
         
     def mostrar_tela_entrada_rapida(self):
@@ -1495,6 +1497,142 @@ class JanelaPrincipal(QMainWindow):
     def mostrar_tela_usuarios(self):
         self.stacked_widget.setCurrentWidget(self.tela_usuarios)
 
+
+
+#===============================================================================
+#5.1 CLASSES DA DASHBOARD
+#===============================================================================
+
+# Adicione esta classe auxiliar antes da DashboardWidget
+
+class KPICardWidget(QWidget):
+    """Um widget de cartão customizado para exibir um Indicador-Chave (KPI)."""
+    def __init__(self, titulo, valor_inicial="0", cor_fundo="#0078d7"):
+        super().__init__()
+        self.setMinimumSize(200, 100)
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {cor_fundo};
+                border-radius: 8px;
+            }}
+            QLabel {{
+                color: white;
+            }}
+        """)
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.label_valor = QLabel(valor_inicial)
+        self.label_valor.setStyleSheet("font-size: 28px; font-weight: bold;")
+        self.label_valor.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.label_titulo = QLabel(titulo)
+        self.label_titulo.setStyleSheet("font-size: 14px;")
+        self.label_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.layout.addWidget(self.label_valor)
+        self.layout.addWidget(self.label_titulo)
+
+    def set_valor(self, novo_valor):
+        """Atualiza o valor exibido no cartão."""
+        self.label_valor.setText(str(novo_valor))
+
+class DashboardWidget(QWidget):
+    """Tela principal do dashboard com KPIs, atalhos e alertas."""
+    # Sinais para comunicar com a JanelaPrincipal e pedir para mudar de tela
+    ir_para_entrada_rapida = Signal()
+    ir_para_saida_rapida = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # --- Título ---
+        titulo = QLabel("Dashboard Principal")
+        titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
+        self.layout.addWidget(titulo)
+
+        # --- Seção de KPIs ---
+        layout_kpis = QHBoxLayout()
+        self.card_produtos = KPICardWidget("Produtos Cadastrados", cor_fundo="#0078d7")
+        self.card_fornecedores = KPICardWidget("Fornecedores", cor_fundo="#5c2d91")
+        self.card_valor_estoque = KPICardWidget("Valor do Estoque (R$)", cor_fundo="#00b294")
+        
+        layout_kpis.addWidget(self.card_produtos)
+        layout_kpis.addWidget(self.card_fornecedores)
+        layout_kpis.addWidget(self.card_valor_estoque)
+        self.layout.addLayout(layout_kpis)
+
+        # --- Seção de Atalhos ---
+        layout_atalhos = QHBoxLayout()
+        self.btn_atalho_entrada = QPushButton("➡️ Registrar Entrada")
+        self.btn_atalho_saida = QPushButton("⬅️ Registrar Saída")
+        self.btn_atalho_entrada.setStyleSheet("font-size: 16px; padding: 15px; background-color: #28a745; color: white; border-radius: 5px;")
+        self.btn_atalho_saida.setStyleSheet("font-size: 16px; padding: 15px; background-color: #dc3545; color: white; border-radius: 5px;")
+        
+        layout_atalhos.addStretch(1)
+        layout_atalhos.addWidget(self.btn_atalho_entrada)
+        layout_atalhos.addWidget(self.btn_atalho_saida)
+        layout_atalhos.addStretch(1)
+        self.layout.addLayout(layout_atalhos)
+        
+        # --- Seção de Alertas de Estoque Baixo ---
+        label_alertas = QLabel("⚠️ Alerta: Produtos com Estoque Baixo")
+        label_alertas.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px;")
+        self.layout.addWidget(label_alertas)
+
+        self.tabela_alertas = QTableWidget()
+        self.tabela_alertas.setColumnCount(3)
+        self.tabela_alertas.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
+        self.tabela_alertas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela_alertas.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.layout.addWidget(self.tabela_alertas)
+
+        # --- Conexões ---
+        self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
+        self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
+
+    def carregar_dados_dashboard(self):
+        """Busca todos os dados necessários para o dashboard da API."""
+        self.carregar_kpis()
+        self.carregar_alertas_estoque()
+
+    def carregar_kpis(self):
+        global access_token
+        url = "http://127.0.0.1:5000/api/dashboard/kpis"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                dados = response.json()
+                self.card_produtos.set_valor(dados.get('total_produtos', 0))
+                self.card_fornecedores.set_valor(dados.get('total_fornecedores', 0))
+                valor_formatado = f"{dados.get('valor_total_estoque', 0):.2f}".replace('.', ',')
+                self.card_valor_estoque.set_valor(valor_formatado)
+        except requests.exceptions.RequestException:
+            print("Erro ao carregar KPIs do dashboard.") # Não mostra popup para não ser intrusivo
+
+    def carregar_alertas_estoque(self):
+        global access_token
+        # Podemos definir o limite aqui ou pegar de um campo de configuração no futuro
+        limite = 10 
+        url = f"http://127.0.0.1:5000/api/dashboard/estoque-baixo?limite={limite}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers, timeout=5)
+            if response.status_code == 200:
+                dados = response.json()
+                self.tabela_alertas.setRowCount(len(dados))
+                for linha, item in enumerate(dados):
+                    self.tabela_alertas.setItem(linha, 0, QTableWidgetItem(item['codigo']))
+                    self.tabela_alertas.setItem(linha, 1, QTableWidgetItem(item['nome']))
+                    self.tabela_alertas.setItem(linha, 2, QTableWidgetItem(str(item['saldo_atual'])))
+            else:
+                 print("Erro ao carregar alertas de estoque.")
+        except requests.exceptions.RequestException:
+            print("Erro de conexão ao carregar alertas de estoque.")
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN (Movida para o final para resolver NameError)
 # ==============================================================================
@@ -1564,6 +1702,7 @@ class JanelaLogin(QWidget):
                 self.janela_principal.carregar_dados_usuario(dados_usuario_logado)
                 # E só então a exibe
                 self.janela_principal.show()
+                self.janela_principal.mostrar_tela_dashboard()
             else:
                 erro_msg = response.json().get('erro', 'Ocorreu um erro desconhecido.')
                 QMessageBox.warning(self, "Erro de Login", f"Falha no login: {erro_msg}")
