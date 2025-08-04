@@ -262,7 +262,111 @@ def get_produto_por_codigo(codigo):
             
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+    
+    
+    
+# Dentro do app.py
 
+@app.route('/api/produtos/<int:id_produto>/fornecedores', methods=['POST'])
+@jwt_required()
+def adicionar_fornecedor_ao_produto(id_produto):
+    """Associa um fornecedor existente a um produto existente."""
+    try:
+        # Pega no ID do fornecedor enviado no corpo do pedido
+        dados = request.get_json()
+        if 'id_fornecedor' not in dados:
+            return jsonify({'erro': 'O ID do fornecedor é obrigatório.'}), 400
+
+        id_fornecedor = dados['id_fornecedor']
+
+        # Encontra o produto e o fornecedor na base de dados
+        produto = Produto.query.get_or_404(id_produto)
+        fornecedor = Fornecedor.query.get_or_404(id_fornecedor)
+
+        # A "mágica" do SQLAlchemy: basta adicionar o objeto à lista.
+        # Ele irá encarregar-se de criar a linha na tabela de junção.
+        if fornecedor not in produto.fornecedores:
+            produto.fornecedores.append(fornecedor)
+            db.session.commit()
+            return jsonify({'mensagem': 'Fornecedor associado ao produto com sucesso!'}), 200
+        else:
+            return jsonify({'mensagem': 'Fornecedor já está associado a este produto.'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+
+
+# Dentro do app.py
+
+@app.route('/api/produtos/<int:id_produto>/naturezas', methods=['POST'])
+@jwt_required()
+def adicionar_natureza_ao_produto(id_produto):
+    """Associa uma natureza existente a um produto existente."""
+    try:
+        dados = request.get_json()
+        if 'id_natureza' not in dados:
+            return jsonify({'erro': 'O ID da natureza é obrigatório.'}), 400
+
+        id_natureza = dados['id_natureza']
+
+        produto = Produto.query.get_or_404(id_produto)
+        natureza = Natureza.query.get_or_404(id_natureza)
+
+        if natureza not in produto.naturezas:
+            produto.naturezas.append(natureza)
+            db.session.commit()
+            return jsonify({'mensagem': 'Natureza associada ao produto com sucesso!'}), 200
+        else:
+            return jsonify({'mensagem': 'Natureza já está associada a este produto.'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+    
+    
+    
+    
+# Dentro do app.py
+
+@app.route('/api/produtos/<int:id_produto>/fornecedores/<int:id_fornecedor>', methods=['DELETE'])
+@jwt_required()
+def remover_fornecedor_do_produto(id_produto, id_fornecedor):
+    """Remove a associação entre um fornecedor e um produto."""
+    try:
+        produto = Produto.query.get_or_404(id_produto)
+        fornecedor = Fornecedor.query.get_or_404(id_fornecedor)
+
+        if fornecedor in produto.fornecedores:
+            produto.fornecedores.remove(fornecedor)
+            db.session.commit()
+            return jsonify({'mensagem': 'Associação com fornecedor removida com sucesso!'}), 200
+        else:
+            return jsonify({'erro': 'Fornecedor não está associado a este produto.'}), 404
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/produtos/<int:id_produto>/naturezas/<int:id_natureza>', methods=['DELETE'])
+@jwt_required()
+def remover_natureza_do_produto(id_produto, id_natureza):
+    """Remove a associação entre uma natureza e um produto."""
+    try:
+        produto = Produto.query.get_or_404(id_produto)
+        natureza = Natureza.query.get_or_404(id_natureza)
+
+        if natureza in produto.naturezas:
+            produto.naturezas.remove(natureza)
+            db.session.commit()
+            return jsonify({'mensagem': 'Associação com natureza removida com sucesso!'}), 200
+        else:
+            return jsonify({'erro': 'Natureza não está associada a este produto.'}), 404
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
 # ... (resto do ficheiro)
 # --- ROTAS DE ESTOQUE ---
 
@@ -388,6 +492,32 @@ def login_endpoint():
             return jsonify({"erro": "Credenciais inválidas"}), 401
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+    
+    
+    
+    
+# Dentro do app.py, na secção de rotas de Usuários
+
+@app.route('/api/usuario/me', methods=['GET'])
+@jwt_required()
+def get_usuario_logado():
+    """Retorna as informações do usuário logado (dono do token)."""
+    # A função get_jwt_identity() devolve o que guardámos como 'identity' (o nosso id_usuario)
+    id_usuario_logado = get_jwt_identity()
+    
+    # Buscamos o usuário na base de dados com esse ID
+    usuario = Usuario.query.get(id_usuario_logado)
+    
+    if not usuario:
+        return jsonify({"erro": "Usuário não encontrado"}), 404
+
+    usuario_json = {
+        'id': usuario.id_usuario,
+        'nome': usuario.nome,
+        'login': usuario.login,
+        'permissao': usuario.permissao
+    }
+    return jsonify(usuario_json), 200
 
 # (Por uma questão de brevidade, omiti as rotas de Fornecedores e Naturezas,
 # mas elas seguiriam exatamente o mesmo padrão de refinamento.)
