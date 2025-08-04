@@ -201,20 +201,16 @@ def produto_por_id_endpoint(id_produto):
         produto = Produto.query.get_or_404(id_produto)
 
         if request.method == 'GET':
+            # ... (a sua lógica GET continua igual)
             produto_json = {
-                'id': produto.id_produto,
-                'nome': produto.nome,
-                'codigo': produto.codigo.strip(),
-                'descricao': produto.descricao,
-                'preco': str(produto.preco)
+                'id': produto.id_produto, 'nome': produto.nome, 'codigo': produto.codigo.strip(),
+                'descricao': produto.descricao, 'preco': str(produto.preco)
             }
             return jsonify(produto_json), 200
         
         elif request.method == 'PUT':
+            # ... (a sua lógica PUT continua igual)
             dados = request.get_json()
-            if 'nome' not in dados or 'codigo' not in dados or 'preco' not in dados:
-                return jsonify({'erro': 'Campos obrigatórios em falta: nome, codigo, preco'}), 400
-            
             produto.nome = dados['nome']
             produto.codigo = dados['codigo']
             produto.descricao = dados.get('descricao')
@@ -225,6 +221,15 @@ def produto_por_id_endpoint(id_produto):
             return jsonify({'mensagem': 'Produto atualizado com sucesso!'}), 200
         
         elif request.method == 'DELETE':
+            # --- NOVA VERIFICAÇÃO DE NEGÓCIO ---
+            # Antes de tentar apagar, verifica se existe alguma movimentação para este produto.
+            movimentacao_existente = MovimentacaoEstoque.query.filter_by(id_produto=id_produto).first()
+            
+            if movimentacao_existente:
+                # Se existir, retorna um erro amigável em vez de deixar o banco de dados falhar.
+                return jsonify({'erro': 'Este produto não pode ser excluído, pois possui um histórico de movimentações no estoque.'}), 400 # 400 = Bad Request
+
+            # Se a verificação passar, o resto do código é executado
             db.session.delete(produto)
             db.session.commit()
             return jsonify({'mensagem': 'Produto excluído com sucesso!'}), 200
@@ -232,11 +237,6 @@ def produto_por_id_endpoint(id_produto):
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
-
-# Adicione aqui as outras rotas (Fornecedores, Naturezas, Estoque, Usuários, Login)
-# seguindo o mesmo padrão de organização e refinamento.
-# ... (código anterior)
-
 # --- ROTA PARA BUSCAR UM PRODUTO PELO CÓDIGO ---
 @app.route('/api/produtos/codigo/<string:codigo>', methods=['GET'])
 @jwt_required()

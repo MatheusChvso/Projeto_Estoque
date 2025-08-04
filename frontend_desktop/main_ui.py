@@ -149,6 +149,7 @@ class JanelaPrincipal(QMainWindow):
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
         self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
+        
 
         self.statusBar().showMessage("Pronto.")
 
@@ -202,7 +203,9 @@ class ProdutosWidget(QWidget):
 
         self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
         self.btn_editar.clicked.connect(self.abrir_formulario_editar)
+        self.btn_excluir.clicked.connect(self.excluir_produto_selecionado)
         self.input_pesquisa.textChanged.connect(self.iniciar_busca_timer)
+        
         
         self.carregar_produtos()
 
@@ -225,6 +228,51 @@ class ProdutosWidget(QWidget):
     def iniciar_busca_timer(self):
         self.search_timer.stop()
         self.search_timer.start(300)
+        
+        
+        
+    def excluir_produto_selecionado(self):
+           # 1. Descobre qual linha está selecionada
+           linha_selecionada = self.tabela_produtos.currentRow()
+           
+           # 2. Verifica se alguma linha foi de facto selecionada
+           if linha_selecionada < 0:
+               QMessageBox.warning(self, "Seleção", "Por favor, selecione um produto na tabela para excluir.")
+               return
+   
+           # 3. Pega no ID do produto guardado no item da primeira coluna
+           item_id = self.tabela_produtos.item(linha_selecionada, 0)
+           produto_id = item_id.data(Qt.UserRole)
+           # Pega no nome do produto para a mensagem de confirmação
+           nome_produto = self.tabela_produtos.item(linha_selecionada, 1).text()
+   
+           # 4. Pede confirmação ao usuário
+           titulo = "Confirmar Exclusão"
+           mensagem = f"Tem a certeza de que deseja excluir o produto '{nome_produto}'?\nEsta ação não pode ser desfeita."
+           
+           # Cria uma caixa de diálogo com botões "Sim" e "Não"
+           resposta = QMessageBox.question(self, titulo, mensagem, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+   
+           # 5. Se o usuário clicou em "Sim", procede com a exclusão
+           if resposta == QMessageBox.StandardButton.Yes:
+               global access_token
+               url = f"http://127.0.0.1:5000/api/produtos/{produto_id}"
+               headers = {'Authorization': f'Bearer {access_token}'}
+   
+               try:
+                   response = requests.delete(url, headers=headers)
+                   
+                   if response.status_code == 200:
+                       QMessageBox.information(self, "Sucesso", "Produto excluído com sucesso!")
+                       # Atualiza a tabela para remover o item excluído
+                       self.carregar_produtos()
+                   else:
+                       erro = response.json().get('erro', 'Erro desconhecido.')
+                       QMessageBox.warning(self, "Erro", f"Não foi possível excluir o produto: {erro}")
+   
+               except requests.exceptions.RequestException as e:
+                   QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")       
+        
 
     def carregar_produtos(self):
         global access_token
