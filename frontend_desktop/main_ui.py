@@ -399,6 +399,7 @@ class EstoqueWidget(QWidget):
         self.tabela_estoque = QTableWidget()
         self.tabela_estoque.setColumnCount(3)
         self.tabela_estoque.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
+        self.tabela_estoque.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_estoque.setAlternatingRowColors(True)
         self.tabela_estoque.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.layout.addWidget(self.titulo)
@@ -443,6 +444,7 @@ class FornecedoresWidget(QWidget):
         self.tabela_fornecedores = QTableWidget()
         self.tabela_fornecedores.setColumnCount(1)
         self.tabela_fornecedores.setHorizontalHeaderLabels(["Nome"])
+        self.tabela_fornecedores.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_fornecedores.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         self.layout.addWidget(self.titulo)
@@ -532,6 +534,7 @@ class NaturezasWidget(QWidget):
         self.tabela_naturezas = QTableWidget()
         self.tabela_naturezas.setColumnCount(1)
         self.tabela_naturezas.setHorizontalHeaderLabels(["Nome"])
+        self.tabela_naturezas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_naturezas.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         self.layout.addWidget(self.titulo)
@@ -685,6 +688,9 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.tela_produtos)
 
     def mostrar_tela_estoque(self):
+        # Primeiro, manda a tela de estoque recarregar os seus dados
+        self.tela_estoque.carregar_dados_estoque()
+        # Depois, exibe a tela já atualizada
         self.stacked_widget.setCurrentWidget(self.tela_estoque)
         
     def mostrar_tela_fornecedores(self):
