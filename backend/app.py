@@ -188,10 +188,16 @@ def add_novo_produto():
         )
         db.session.add(novo_produto)
         db.session.commit()
-        return jsonify({'mensagem': 'Produto adicionado com sucesso!'}), 201
+        
+        return jsonify({
+            'mensagem': 'Produto adicionado com sucesso!',
+            'id_produto_criado': novo_produto.id_produto
+        }), 201
+        
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+
 
 @app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT', 'DELETE'])
 @jwt_required()
@@ -203,8 +209,15 @@ def produto_por_id_endpoint(id_produto):
         if request.method == 'GET':
             # ... (a sua lógica GET continua igual)
             produto_json = {
-                'id': produto.id_produto, 'nome': produto.nome, 'codigo': produto.codigo.strip(),
-                'descricao': produto.descricao, 'preco': str(produto.preco)
+                'id': produto.id_produto,
+                'nome': produto.nome,
+                'codigo': produto.codigo.strip(),
+                'descricao': produto.descricao,
+                'preco': str(produto.preco),
+                'codigoB': produto.codigoB,
+                'codigoC': produto.codigoC,
+                'fornecedores': [{'id': f.id_fornecedor} for f in produto.fornecedores],
+                'naturezas': [{'id': n.id_natureza} for n in produto.naturezas]
             }
             return jsonify(produto_json), 200
         
@@ -521,6 +534,134 @@ def get_usuario_logado():
 
 # (Por uma questão de brevidade, omiti as rotas de Fornecedores e Naturezas,
 # mas elas seguiriam exatamente o mesmo padrão de refinamento.)
+
+
+
+
+# Dentro do seu app.py
+
+# ==============================================================================
+# ROTAS DA API PARA FORNECEDORES
+# ==============================================================================
+
+@app.route('/api/fornecedores', methods=['GET'])
+@jwt_required()
+def get_todos_fornecedores():
+    """Retorna uma lista de todos os fornecedores."""
+    try:
+        fornecedores = Fornecedor.query.order_by(Fornecedor.nome).all()
+        fornecedores_json = [{'id': f.id_fornecedor, 'nome': f.nome} for f in fornecedores]
+        return jsonify(fornecedores_json), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/fornecedores', methods=['POST'])
+@jwt_required()
+def add_novo_fornecedor():
+    """Cria um novo fornecedor."""
+    try:
+        dados = request.get_json()
+        if 'nome' not in dados or not dados['nome'].strip():
+            return jsonify({'erro': 'O nome do fornecedor é obrigatório.'}), 400
+
+        novo_fornecedor = Fornecedor(nome=dados['nome'])
+        db.session.add(novo_fornecedor)
+        db.session.commit()
+        return jsonify({'mensagem': 'Fornecedor adicionado com sucesso!'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/fornecedores/<int:id_fornecedor>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def fornecedor_por_id_endpoint(id_fornecedor):
+    """Edita ou exclui um fornecedor específico."""
+    try:
+        fornecedor = Fornecedor.query.get_or_404(id_fornecedor)
+
+        if request.method == 'PUT':
+            dados = request.get_json()
+            if 'nome' not in dados or not dados['nome'].strip():
+                return jsonify({'erro': 'O nome do fornecedor é obrigatório.'}), 400
+            fornecedor.nome = dados['nome']
+            db.session.commit()
+            return jsonify({'mensagem': 'Fornecedor atualizado com sucesso!'}), 200
+
+        elif request.method == 'DELETE':
+            if fornecedor.produtos:
+                return jsonify({'erro': 'Este fornecedor não pode ser excluído pois está associado a um ou mais produtos.'}), 400
+            
+            db.session.delete(fornecedor)
+            db.session.commit()
+            return jsonify({'mensagem': 'Fornecedor excluído com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+    
+    
+    
+    
+# Dentro do seu app.py
+
+# ==============================================================================
+# ROTAS DA API PARA NATUREZAS
+# ==============================================================================
+
+@app.route('/api/naturezas', methods=['GET'])
+@jwt_required()
+def get_todas_naturezas():
+    """Retorna uma lista de todas as naturezas."""
+    try:
+        naturezas = Natureza.query.order_by(Natureza.nome).all()
+        naturezas_json = [{'id': n.id_natureza, 'nome': n.nome} for n in naturezas]
+        return jsonify(naturezas_json), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/naturezas', methods=['POST'])
+@jwt_required()
+def add_nova_natureza():
+    """Cria uma nova natureza."""
+    try:
+        dados = request.get_json()
+        if 'nome' not in dados or not dados['nome'].strip():
+            return jsonify({'erro': 'O nome da natureza é obrigatório.'}), 400
+
+        nova_natureza = Natureza(nome=dados['nome'])
+        db.session.add(nova_natureza)
+        db.session.commit()
+        return jsonify({'mensagem': 'Natureza adicionada com sucesso!'}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
+
+@app.route('/api/naturezas/<int:id_natureza>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def natureza_por_id_endpoint(id_natureza):
+    """Edita ou exclui uma natureza específica."""
+    try:
+        natureza = Natureza.query.get_or_404(id_natureza)
+
+        if request.method == 'PUT':
+            dados = request.get_json()
+            if 'nome' not in dados or not dados['nome'].strip():
+                return jsonify({'erro': 'O nome da natureza é obrigatório.'}), 400
+            natureza.nome = dados['nome']
+            db.session.commit()
+            return jsonify({'mensagem': 'Natureza atualizada com sucesso!'}), 200
+
+        elif request.method == 'DELETE':
+            if natureza.produtos:
+                return jsonify({'erro': 'Esta natureza não pode ser excluída pois está associada a um ou mais produtos.'}), 400
+            
+            db.session.delete(natureza)
+            db.session.commit()
+            return jsonify({'mensagem': 'Natureza excluída com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500
 
 # ==============================================================================
 # Bloco de Execução Principal
