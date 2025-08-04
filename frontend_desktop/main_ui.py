@@ -402,9 +402,12 @@ class ProdutosWidget(QWidget):
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
         
         layout_botoes = QHBoxLayout()
-        self.btn_adicionar = QPushButton("Adicionar Novo")
-        self.btn_editar = QPushButton("Editar Selecionado")
-        self.btn_excluir = QPushButton("Excluir Selecionado")
+        self.btn_adicionar = QPushButton("➕ Adicionar Novo")
+        self.btn_editar = QPushButton("✏️ Editar Selecionado")
+        self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
+        self.btn_adicionar.setObjectName("btnAdd")
+        self.btn_editar.setObjectName("btnEdit")
+        self.btn_excluir.setObjectName("btnDelete")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
@@ -1473,17 +1476,7 @@ class JanelaPrincipal(QMainWindow):
         super().__init__()
         self.setWindowTitle("Sistema de Gestão de Estoque")
         self.resize(1280, 720)
-        self.setStyleSheet("""
-            QMainWindow, QWidget { background-color: #f5f5f5; }
-            #painelLateral { background-color: #e0e0e0; }
-            #painelLateral QPushButton {
-                background-color: #e0e0e0; color: #333; border: none;
-                border-radius: 5px; padding: 12px; font-size: 16px; text-align: left;
-            }
-            #painelLateral QPushButton:hover { background-color: #cce7ff; }
-            #painelLateral QPushButton:checked { background-color: #0078d7; color: white; }
-            QMenuBar { background-color: #dcdcdc; color: #333; }
-        """)
+        
 
         # Inicializa com dados vazios
         self.dados_usuario = {}
@@ -1850,6 +1843,15 @@ class JanelaLogin(QWidget):
 # ==============================================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    # Carrega o arquivo de estilo externo com a codificação correta
+    try:
+        # A CORREÇÃO ESTÁ AQUI: adicionamos encoding="utf-8"
+        with open("style.qss", "r", encoding="utf-8") as f:
+            app.setStyleSheet(f.read())
+    except FileNotFoundError:
+        print("AVISO: Arquivo de estilo (style.qss) não encontrado. Usando estilo padrão.")
+    
     janela_login = JanelaLogin()
     janela_login.show()
     sys.exit(app.exec())

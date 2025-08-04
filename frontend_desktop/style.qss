@@ -1,0 +1,120 @@
+/* style.qss - Versão Corrigida para Fundos Brancos */
+
+/* --- CORREÇÃO PARA FUNDOS BRANCOS --- */
+/* Forçamos QMainWindow, QDialog e outros containers a terem o fundo escuro. */
+QMainWindow, QDialog, QWidget, QStackedWidget {
+    background-color: #2d2d2d;
+    color: #f0f0f0;
+    font-family: Segoe UI, Calibri, Tahoma;
+    font-size: 15px;
+}
+
+/* Garantimos que Labels tenham fundo transparente e não criem um bloco branco */
+QLabel {
+    background-color: transparent;
+}
+
+
+/* Campos de Entrada */
+QLineEdit, QComboBox, QDateEdit {
+    background-color: #4a4a4a;
+    border: 1px solid #6a6a6a;
+    padding: 8px;
+    border-radius: 5px;
+    color: #f0f0f0;
+    min-height: 20px;
+}
+
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus {
+    border: 2px solid #0078d7; /* Destaque azul mais forte ao focar */
+}
+
+QComboBox::drop-down {
+    border: none;
+    background-color: #6a6a6a;
+    width: 25px;
+    border-top-right-radius: 5px;
+    border-bottom-right-radius: 5px;
+}
+
+/* ----- BOTÕES DE AÇÃO ESPECÍFICOS ----- */
+ProdutosWidget QPushButton, UsuariosWidget QPushButton, FornecedoresWidget QPushButton, NaturezasWidget QPushButton {
+    padding: 10px 20px;
+    border: 1px solid #00000033;
+    border-radius: 6px;
+    font-size: 15px;
+    font-weight: bold;
+    color: white;
+}
+
+QPushButton#btnAdd {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #28a745, stop: 1 #218838);
+}
+QPushButton#btnAdd:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #2ebf4f, stop: 1 #259d41);
+}
+QPushButton#btnAdd:pressed {
+    background-color: #218838;
+}
+
+QPushButton#btnEdit {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #0078d7, stop: 1 #005a9e);
+}
+QPushButton#btnEdit:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #008cff, stop: 1 #006acb);
+}
+QPushButton#btnEdit:pressed {
+    background-color: #005a9e;
+}
+
+QPushButton#btnDelete, QPushButton#btnDesativar {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #dc3545, stop: 1 #c82333);
+}
+QPushButton#btnDelete:hover, QPushButton#btnDesativar:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #e44d5a, stop: 1 #d32d3e);
+}
+QPushButton#btnDelete:pressed, QPushButton#btnDesativar:pressed {
+    background-color: #c82333;
+}
+
+/* Tabela */
+QTableWidget {
+    background-color: #3c3c3c;
+    border: 1px solid #555;
+    gridline-color: #4a4a4a;
+    alternate-background-color: #424242;
+}
+
+QHeaderView::section {
+    background-color: #2d2d2d;
+    color: #f0f0f0;
+    padding: 8px;
+    border: 1px solid #4a4a4a;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* Painel Lateral */
+#painelLateral {
+    background-color: #252525;
+    border-right: 1px solid black;
+}
+
+#painelLateral QPushButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 5px;
+    padding: 12px;
+    text-align: left;
+    font-weight: normal;
+}
+
+#painelLateral QPushButton:hover {
+    background-color: #3a3a3a;
+}
+
+#painelLateral QPushButton:checked {
+    background-color: #0078d7;
+    color: white;
+    font-weight: bold;
+}
