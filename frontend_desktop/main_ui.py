@@ -263,6 +263,44 @@ class FormularioNaturezaDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar a natureza: {e}")
 
+
+
+# TRECHO 1: ADICIONAR esta nova classe ao main_ui.py
+
+class FormularioUsuarioDialog(QDialog):
+    """Janela de formulário para Adicionar ou Editar um Usuário."""
+    def __init__(self, parent=None, usuario_id=None):
+        super().__init__(parent)
+        self.usuario_id = usuario_id
+        self.setWindowTitle("Adicionar Novo Usuário" if self.usuario_id is None else "Editar Usuário")
+
+        self.layout = QFormLayout(self)
+        self.input_nome = QLineEdit()
+        self.input_login = QLineEdit()
+        self.input_senha = QLineEdit()
+        self.input_senha.setPlaceholderText("Deixe em branco para não alterar")
+        self.input_permissao = QLineEdit() # Futuramente, pode ser um ComboBox
+
+        self.layout.addRow("Nome:", self.input_nome)
+        self.layout.addRow("Login:", self.input_login)
+        self.layout.addRow("Nova Senha:", self.input_senha)
+        self.layout.addRow("Permissão:", self.input_permissao)
+
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        self.botoes.accepted.connect(self.accept)
+        self.botoes.rejected.connect(self.reject)
+        self.layout.addWidget(self.botoes)
+
+        if self.usuario_id:
+            self.carregar_dados_usuario()
+
+    def carregar_dados_usuario(self):
+        # TODO: Implementar a busca de dados do usuário na API
+        pass
+
+    def accept(self):
+        # TODO: Implementar a lógica de salvar (POST/PUT) na API
+        pass
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
@@ -604,6 +642,70 @@ class NaturezasWidget(QWidget):
             except requests.exceptions.RequestException as e:
                 QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
+
+
+# TRECHO 2: ADICIONAR esta nova classe ao main_ui.py
+
+class UsuariosWidget(QWidget):
+    """Tela para gerir (CRUD) os usuários."""
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.titulo = QLabel("Gestão de Usuários")
+        self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
+
+        layout_botoes = QHBoxLayout()
+        self.btn_adicionar = QPushButton("Adicionar Novo")
+        self.btn_editar = QPushButton("Editar Selecionado")
+        self.btn_desativar = QPushButton("Desativar Selecionado")
+        layout_botoes.addWidget(self.btn_adicionar)
+        layout_botoes.addWidget(self.btn_editar)
+        layout_botoes.addWidget(self.btn_desativar)
+        layout_botoes.addStretch(1)
+
+        self.tabela_usuarios = QTableWidget()
+        self.tabela_usuarios.setColumnCount(4)
+        self.tabela_usuarios.setHorizontalHeaderLabels(["Nome", "Login", "Permissão", "Status"])
+        self.tabela_usuarios.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela_usuarios.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+        self.layout.addWidget(self.titulo)
+        self.layout.addLayout(layout_botoes)
+        self.layout.addWidget(self.tabela_usuarios)
+
+        # Conexões
+        self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
+        # TODO: Conectar os botões de editar e desativar
+
+        self.carregar_usuarios()
+
+    def carregar_usuarios(self):
+        global access_token
+        url = "http://127.0.0.1:5000/api/usuarios"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                usuarios = response.json()
+                self.tabela_usuarios.setRowCount(len(usuarios))
+                for linha, user in enumerate(usuarios):
+                    item_nome = QTableWidgetItem(user['nome'])
+                    item_nome.setData(Qt.UserRole, user['id'])
+                    
+                    status = "Ativo" if user['ativo'] else "Inativo"
+                    
+                    self.tabela_usuarios.setItem(linha, 0, item_nome)
+                    self.tabela_usuarios.setItem(linha, 1, QTableWidgetItem(user['login']))
+                    self.tabela_usuarios.setItem(linha, 2, QTableWidgetItem(user['permissao']))
+                    self.tabela_usuarios.setItem(linha, 3, QTableWidgetItem(status))
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar os usuários.")
+        except requests.exceptions.RequestException as e:
+            print(f"Erro de Conexão: {e}")
+
+    def abrir_formulario_adicionar(self):
+        # TODO: Implementar a lógica para abrir o FormularioUsuarioDialog
+        print("Abrir formulário de usuário...")
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
@@ -624,6 +726,10 @@ class JanelaPrincipal(QMainWindow):
             QMenuBar { background-color: #dcdcdc; color: #333; }
         """)
 
+        # Inicializa com dados vazios
+        self.dados_usuario = {}
+
+        # --- BARRA DE MENUS ---
         menu_bar = self.menuBar()
         menu_arquivo = menu_bar.addMenu("&Arquivo")
         acao_sair = QAction("Sair", self)
@@ -633,30 +739,36 @@ class JanelaPrincipal(QMainWindow):
         self.acao_produtos = QAction("Produtos...", self)
         menu_cadastros.addAction(self.acao_produtos)
 
+        # --- LAYOUT GERAL E WIDGET CENTRAL ---
         widget_central = QWidget()
         self.setCentralWidget(widget_central)
         layout_principal = QHBoxLayout(widget_central)
 
+        # --- PAINEL DE NAVEGAÇÃO LATERAL ---
         painel_lateral = QWidget()
         painel_lateral.setObjectName("painelLateral")
         painel_lateral.setFixedWidth(200)
-        layout_painel_lateral = QVBoxLayout(painel_lateral)
-        layout_painel_lateral.setAlignment(Qt.AlignTop)
+        self.layout_painel_lateral = QVBoxLayout(painel_lateral) # Tornando o layout um atributo
+        self.layout_painel_lateral.setAlignment(Qt.AlignTop)
+
         self.btn_dashboard = QPushButton("Dashboard")
         self.btn_produtos = QPushButton("Produtos")
         self.btn_estoque = QPushButton("Estoque")
         self.btn_fornecedores = QPushButton("Fornecedores")
         self.btn_naturezas = QPushButton("Naturezas")
         self.btn_usuarios = QPushButton("Usuários")
-        layout_painel_lateral.addWidget(self.btn_dashboard)
-        layout_painel_lateral.addWidget(self.btn_produtos)
-        layout_painel_lateral.addWidget(self.btn_estoque)
-        layout_painel_lateral.addWidget(self.btn_fornecedores)
-        layout_painel_lateral.addWidget(self.btn_naturezas)
-        layout_painel_lateral.addWidget(self.btn_usuarios)
-        layout_painel_lateral.addStretch(1)
+
+        self.layout_painel_lateral.addWidget(self.btn_dashboard)
+        self.layout_painel_lateral.addWidget(self.btn_produtos)
+        self.layout_painel_lateral.addWidget(self.btn_estoque)
+        self.layout_painel_lateral.addWidget(self.btn_fornecedores)
+        self.layout_painel_lateral.addWidget(self.btn_naturezas)
+        # O botão de usuários será adicionado depois, na função de carregar dados
+        
+        self.layout_painel_lateral.addStretch(1)
         layout_principal.addWidget(painel_lateral)
 
+        # --- ÁREA DE CONTEÚDO ---
         self.stacked_widget = QStackedWidget()
         layout_principal.addWidget(self.stacked_widget)
         self.tela_dashboard = QLabel("Bem-vindo ao Sistema!\n\nSelecione uma opção no menu lateral para começar.")
@@ -666,12 +778,17 @@ class JanelaPrincipal(QMainWindow):
         self.tela_estoque = EstoqueWidget()
         self.tela_fornecedores = FornecedoresWidget()
         self.tela_naturezas = NaturezasWidget()
+        self.tela_usuarios = UsuariosWidget()
+        # A tela de usuários será criada depois
+        
         self.stacked_widget.addWidget(self.tela_dashboard)
         self.stacked_widget.addWidget(self.tela_produtos)
         self.stacked_widget.addWidget(self.tela_estoque)
         self.stacked_widget.addWidget(self.tela_fornecedores)
         self.stacked_widget.addWidget(self.tela_naturezas)
+        self.stacked_widget.addWidget(self.tela_usuarios)
 
+        # --- CONEXÕES ---
         self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
@@ -698,6 +815,27 @@ class JanelaPrincipal(QMainWindow):
         
     def mostrar_tela_naturezas(self):
         self.stacked_widget.setCurrentWidget(self.tela_naturezas)
+        
+    def carregar_dados_usuario(self, dados_usuario):
+        """Recebe os dados do usuário logado e ajusta a UI de acordo com as permissões."""
+        self.dados_usuario = dados_usuario
+        
+        # Atualiza a barra de status
+        nome_usuario = self.dados_usuario.get('nome', 'N/A')
+        permissao_usuario = self.dados_usuario.get('permissao', 'N/A')
+        self.statusBar().showMessage(f"Usuário: {nome_usuario} | Permissão: {permissao_usuario}")
+
+        # Lógica para mostrar/esconder o botão de usuários
+        if self.dados_usuario.get('permissao') == 'Administrador':
+            # Insere o botão na penúltima posição do layout lateral
+            self.layout_painel_lateral.insertWidget(self.layout_painel_lateral.count() - 1, self.btn_usuarios)
+            self.btn_usuarios.clicked.connect(self.mostrar_tela_usuarios)
+            # TODO: Criar e adicionar a tela de usuários ao stacked_widget
+        else:
+            self.btn_usuarios.hide()
+            
+    def mostrar_tela_usuarios(self):
+        self.stacked_widget.setCurrentWidget(self.tela_usuarios)
 
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN (Movida para o final para resolver NameError)
@@ -732,21 +870,41 @@ class JanelaLogin(QWidget):
         self.botao_login.clicked.connect(self.fazer_login)
 
     def fazer_login(self):
+        """Envia as credenciais para a API e trata a resposta."""
         global access_token
         login = self.input_login.text()
         senha = self.input_senha.text()
+
         if not login or not senha:
             QMessageBox.warning(self, "Erro de Entrada", "Os campos de login e senha não podem estar vazios.")
             return
+
         url = "http://127.0.0.1:5000/api/login"
         dados = {"login": login, "senha": senha}
+
         try:
             response = requests.post(url, json=dados)
             if response.status_code == 200:
                 access_token = response.json()['access_token']
                 print("Login bem-sucedido! Token guardado.")
+                
+                # Busca os dados do usuário logado
+                headers = {'Authorization': f'Bearer {access_token}'}
+                url_me = "http://127.0.0.1:5000/api/usuario/me"
+                response_me = requests.get(url_me, headers=headers)
+                
+                if response_me.status_code == 200:
+                    dados_usuario_logado = response_me.json()
+                else:
+                    dados_usuario_logado = {'nome': 'Desconhecido', 'permissao': 'Usuario'}
+                
                 self.close()
+                
+                # Cria a janela principal primeiro
                 self.janela_principal = JanelaPrincipal()
+                # DEPOIS, carrega os dados do usuário nela
+                self.janela_principal.carregar_dados_usuario(dados_usuario_logado)
+                # E só então a exibe
                 self.janela_principal.show()
             else:
                 erro_msg = response.json().get('erro', 'Ocorreu um erro desconhecido.')
