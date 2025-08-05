@@ -17,8 +17,10 @@ from PySide6.QtWidgets import (
     # ... todos os seus imports existentes
     QComboBox, QFileDialog
 )
-from PySide6.QtWidgets import QDateEdit, QCalendarWidget
+from PySide6.QtWidgets import QDateEdit, QCalendarWidget, QMenu
 from PySide6.QtCore import Qt, QTimer, Signal, QDate, QEvent
+from PySide6.QtGui import QKeySequence
+
 # ==============================================================================
 # 2. VARIÁVEIS GLOBAIS
 # ==============================================================================
@@ -1546,60 +1548,15 @@ class JanelaPrincipal(QMainWindow):
         super().__init__()
         self.setWindowTitle("Sistema de Gestão de Estoque")
         self.resize(1280, 720)
-        
-
+    
         # Inicializa com dados vazios
         self.dados_usuario = {}
-
-        # --- BARRA DE MENUS ---
-        menu_bar = self.menuBar()
-        menu_arquivo = menu_bar.addMenu("&Arquivo")
-        acao_sair = QAction("Sair", self)
-        acao_sair.triggered.connect(self.close)
-        menu_arquivo.addAction(acao_sair)
-        menu_cadastros = menu_bar.addMenu("&Cadastros")
-        self.acao_produtos = QAction("Produtos...", self)
-        menu_cadastros.addAction(self.acao_produtos)
-
-        # --- LAYOUT GERAL E WIDGET CENTRAL ---
-        widget_central = QWidget()
-        self.setCentralWidget(widget_central)
-        layout_principal = QHBoxLayout(widget_central)
-
-        # --- PAINEL DE NAVEGAÇÃO LATERAL ---
-        painel_lateral = QWidget()
-        painel_lateral.setObjectName("painelLateral")
-        painel_lateral.setFixedWidth(200)
-        self.layout_painel_lateral = QVBoxLayout(painel_lateral) # Tornando o layout um atributo
-        self.layout_painel_lateral.setAlignment(Qt.AlignTop)
-
-        self.btn_dashboard = QPushButton("Dashboard")
-        self.btn_produtos = QPushButton("Produtos")
-        self.btn_estoque = QPushButton("Estoque")
-        self.btn_entrada_rapida = QPushButton("Entrada Rápida")
-        self.btn_saida_rapida = QPushButton("Saída Rápida")
-        self.btn_relatorios = QPushButton("Relatórios")
-        self.btn_fornecedores = QPushButton("Fornecedores")
-        self.btn_naturezas = QPushButton("Naturezas")
-        self.btn_usuarios = QPushButton("Usuários")
-
-        self.layout_painel_lateral.addWidget(self.btn_dashboard)
-        self.layout_painel_lateral.addWidget(self.btn_produtos)
-        self.layout_painel_lateral.addWidget(self.btn_estoque)
-        self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
-        self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
-        self.layout_painel_lateral.addWidget(self.btn_relatorios)
-        self.layout_painel_lateral.addWidget(self.btn_fornecedores)
-        self.layout_painel_lateral.addWidget(self.btn_naturezas)
-        # O botão de usuários será adicionado depois, na função de carregar dados
-        
-        self.layout_painel_lateral.addStretch(1)
-        layout_principal.addWidget(painel_lateral)
-
-        # --- ÁREA DE CONTEÚDO ---
+    
+        # --- ÁREA DE CONTEÚDO (criada antes para que as ações possam se conectar) ---
         self.stacked_widget = QStackedWidget()
-        layout_principal.addWidget(self.stacked_widget)
-        self.tela_dashboard = DashboardWidget() 
+        self.stacked_widget.setObjectName("mainContentArea")
+        
+        self.tela_dashboard = DashboardWidget()
         self.tela_produtos = ProdutosWidget()
         self.tela_estoque = EstoqueWidget()
         self.tela_entrada_rapida = EntradaRapidaWidget()
@@ -1608,8 +1565,7 @@ class JanelaPrincipal(QMainWindow):
         self.tela_fornecedores = FornecedoresWidget()
         self.tela_naturezas = NaturezasWidget()
         self.tela_usuarios = UsuariosWidget()
-        # A tela de usuários será criada depois
-        
+    
         self.stacked_widget.addWidget(self.tela_dashboard)
         self.stacked_widget.addWidget(self.tela_produtos)
         self.stacked_widget.addWidget(self.tela_estoque)
@@ -1619,22 +1575,123 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.addWidget(self.tela_fornecedores)
         self.stacked_widget.addWidget(self.tela_naturezas)
         self.stacked_widget.addWidget(self.tela_usuarios)
-
+    
+        # --- BARRA DE MENUS APRIMORADA ---
+        menu_bar = self.menuBar()
+    
+        # 1. Menu Arquivo
+        menu_arquivo = menu_bar.addMenu("&Arquivo")
+        acao_dashboard = QAction("Dashboard", self)
+        acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
+        menu_arquivo.addAction(acao_dashboard)
+        menu_arquivo.addSeparator()
+        acao_sair = QAction("Sair", self)
+        acao_sair.setShortcut(QKeySequence.Quit) # Atalho Ctrl+Q
+        acao_sair.triggered.connect(self.close)
+        menu_arquivo.addAction(acao_sair)
+    
+        # 2. Menu Cadastros
+        # A ORDEM CORRETA É ESTA: PRIMEIRO CRIAR, DEPOIS USAR
+        self.menu_cadastros = menu_bar.addMenu("&Cadastros") # <<< CRIAÇÃO
+        
+        self.acao_produtos = QAction("Produtos...", self)
+        self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
+        self.menu_cadastros.addAction(self.acao_produtos) # <<< USO
+        
+        self.acao_fornecedores = QAction("Fornecedores...", self)
+        self.acao_fornecedores.triggered.connect(self.mostrar_tela_fornecedores)
+        self.menu_cadastros.addAction(self.acao_fornecedores) # <<< USO
+        
+        self.acao_naturezas = QAction("Naturezas...", self)
+        self.acao_naturezas.triggered.connect(self.mostrar_tela_naturezas)
+        self.menu_cadastros.addAction(self.acao_naturezas) # <<< USO
+        
+        self.menu_cadastros.addSeparator() # <<< USO
+        self.acao_usuarios = QAction("Usuários...", self) # Ação é criada, mas adicionada ao menu depois
+        self.acao_usuarios.triggered.connect(self.mostrar_tela_usuarios)
+    
+        # 3. Menu Operações
+        menu_operacoes = menu_bar.addMenu("&Operações")
+        acao_entrada = QAction("Entrada Rápida de Estoque...", self)
+        acao_entrada.triggered.connect(self.mostrar_tela_entrada_rapida)
+        menu_operacoes.addAction(acao_entrada)
+        
+        acao_saida = QAction("Saída Rápida de Estoque...", self)
+        acao_saida.triggered.connect(self.mostrar_tela_saida_rapida)
+        menu_operacoes.addAction(acao_saida)
+        
+        menu_operacoes.addSeparator()
+        acao_saldos = QAction("Consultar Saldos...", self)
+        acao_saldos.triggered.connect(self.mostrar_tela_estoque)
+        menu_operacoes.addAction(acao_saldos)
+        
+        acao_historico = QAction("Ver Histórico de Movimentações...", self)
+        acao_historico.triggered.connect(lambda: (self.mostrar_tela_estoque(), self.tela_estoque.mostrar_historico()))
+        menu_operacoes.addAction(acao_historico)
+    
+        # 4. Menu Relatórios
+        menu_relatorios = menu_bar.addMenu("&Relatórios")
+        acao_gerar_relatorio = QAction("Gerar Relatório...", self)
+        acao_gerar_relatorio.triggered.connect(self.mostrar_tela_relatorios)
+        menu_relatorios.addAction(acao_gerar_relatorio)
+    
+        # 5. Menu Ajuda
+        menu_ajuda = menu_bar.addMenu("&Ajuda")
+        acao_sobre = QAction("Sobre...", self)
+        acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
+        menu_ajuda.addAction(acao_sobre)
+    
+        # --- LAYOUT GERAL E WIDGET CENTRAL ---
+        widget_central = QWidget()
+        self.setCentralWidget(widget_central)
+        layout_principal = QHBoxLayout(widget_central)
+    
+        # --- PAINEL DE NAVEGAÇÃO LATERAL ---
+        painel_lateral = QWidget()
+        painel_lateral.setObjectName("painelLateral")
+        painel_lateral.setFixedWidth(220)
+        self.layout_painel_lateral = QVBoxLayout(painel_lateral)
+        self.layout_painel_lateral.setAlignment(Qt.AlignTop)
+    
+        self.btn_dashboard = QPushButton("🏠 Dashboard")
+        self.btn_produtos = QPushButton("📦 Produtos")
+        self.btn_estoque = QPushButton("📊 Estoque")
+        self.btn_entrada_rapida = QPushButton("➡️ Entrada Rápida")
+        self.btn_saida_rapida = QPushButton("⬅️ Saída Rápida")
+        self.btn_relatorios = QPushButton("📄 Relatórios")
+        self.btn_fornecedores = QPushButton("🚚 Fornecedores")
+        self.btn_naturezas = QPushButton("🌿 Naturezas")
+        self.btn_usuarios = QPushButton("👥 Usuários")
+    
+        self.layout_painel_lateral.addWidget(self.btn_dashboard)
+        self.layout_painel_lateral.addWidget(self.btn_produtos)
+        self.layout_painel_lateral.addWidget(self.btn_estoque)
+        self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
+        self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
+        self.layout_painel_lateral.addWidget(self.btn_relatorios)
+        self.layout_painel_lateral.addWidget(self.btn_fornecedores)
+        self.layout_painel_lateral.addWidget(self.btn_naturezas)
+        
+        self.layout_painel_lateral.addStretch(1)
+        layout_principal.addWidget(painel_lateral)
+        layout_principal.addWidget(self.stacked_widget)
+    
         # --- CONEXÕES ---
         self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
-        self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
         self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
         self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
-        self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
         self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
-        self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
+        self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
         self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
         self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
+        
+        # Conexões de sinais entre widgets
         self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
         self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
-        self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
-
+        self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
+        self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
+    
         self.statusBar().showMessage("Pronto.")
 
     def mostrar_tela_dashboard(self):
@@ -1679,24 +1736,34 @@ class JanelaPrincipal(QMainWindow):
         """Recebe os dados do usuário logado e ajusta a UI de acordo com as permissões."""
         self.dados_usuario = dados_usuario
         
-        # Atualiza a barra de status
         nome_usuario = self.dados_usuario.get('nome', 'N/A')
         permissao_usuario = self.dados_usuario.get('permissao', 'N/A')
         self.statusBar().showMessage(f"Usuário: {nome_usuario} | Permissão: {permissao_usuario}")
-
-        # Lógica para mostrar/esconder o botão de usuários
+    
         if self.dados_usuario.get('permissao') == 'Administrador':
-            # Insere o botão na penúltima posição do layout lateral
+            # Adiciona o botão ao painel lateral
             self.layout_painel_lateral.insertWidget(self.layout_painel_lateral.count() - 1, self.btn_usuarios)
             self.btn_usuarios.clicked.connect(self.mostrar_tela_usuarios)
-            # TODO: Criar e adicionar a tela de usuários ao stacked_widget
+            
+            # Adiciona a ação ao menu de cadastros
+            self.menu_cadastros.addAction(self.acao_usuarios)
         else:
             self.btn_usuarios.hide()
             
     def mostrar_tela_usuarios(self):
         self.stacked_widget.setCurrentWidget(self.tela_usuarios)
 
-
+    def mostrar_dialogo_sobre(self):
+        """Exibe uma caixa de diálogo 'Sobre' com informações do sistema."""
+        QMessageBox.about(self, 
+            "Sobre o Sistema de Gestão de Estoque",
+            """
+            <b>Sistema de Gestão de Estoque v1.0</b>
+            <p>Desenvolvido como parte de um projeto de demonstração.</p>
+            <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
+            <p>Agradecimentos especiais pela colaboração e testes.</p>
+            """
+        )
 
 #===============================================================================
 #5.1 CLASSES DA DASHBOARD
