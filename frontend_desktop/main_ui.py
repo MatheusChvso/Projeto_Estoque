@@ -1714,25 +1714,25 @@ class DashboardWidget(QWidget):
         self.layout.addLayout(layout_atalhos)
         
         # --- Seção de Alertas de Estoque Baixo ---
-        label_alertas = QLabel("⚠️ Alerta: Produtos com Estoque Baixo")
-        label_alertas.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px;")
-        self.layout.addWidget(label_alertas)
-
-        self.tabela_alertas = QTableWidget()
-        self.tabela_alertas.setColumnCount(3)
-        self.tabela_alertas.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
-        self.tabela_alertas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tabela_alertas.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.layout.addWidget(self.tabela_alertas)
-
-        # --- Conexões ---
-        self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
-        self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
+        #label_alertas = QLabel("⚠️ Alerta: Produtos com Estoque Baixo")
+        #label_alertas.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px;")
+        #self.layout.addWidget(label_alertas)
+#
+        #self.tabela_alertas = QTableWidget()
+        #self.tabela_alertas.setColumnCount(3)
+        #self.tabela_alertas.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
+        #self.tabela_alertas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        #self.tabela_alertas.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        #self.layout.addWidget(self.tabela_alertas)
+#
+        ## --- Conexões ---
+        #self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
+        #self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
 
     def carregar_dados_dashboard(self):
         """Busca todos os dados necessários para o dashboard da API."""
         self.carregar_kpis()
-        self.carregar_alertas_estoque()
+        #self.carregar_alertas_estoque()
 
     def carregar_kpis(self):
         global access_token
@@ -1749,25 +1749,7 @@ class DashboardWidget(QWidget):
         except requests.exceptions.RequestException:
             print("Erro ao carregar KPIs do dashboard.") # Não mostra popup para não ser intrusivo
 
-    def carregar_alertas_estoque(self):
-        global access_token
-        # Podemos definir o limite aqui ou pegar de um campo de configuração no futuro
-        limite = 10 
-        url = f"http://127.0.0.1:5000/api/dashboard/estoque-baixo?limite={limite}"
-        headers = {'Authorization': f'Bearer {access_token}'}
-        try:
-            response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code == 200:
-                dados = response.json()
-                self.tabela_alertas.setRowCount(len(dados))
-                for linha, item in enumerate(dados):
-                    self.tabela_alertas.setItem(linha, 0, QTableWidgetItem(item['codigo']))
-                    self.tabela_alertas.setItem(linha, 1, QTableWidgetItem(item['nome']))
-                    self.tabela_alertas.setItem(linha, 2, QTableWidgetItem(str(item['saldo_atual'])))
-            else:
-                 print("Erro ao carregar alertas de estoque.")
-        except requests.exceptions.RequestException:
-            print("Erro de conexão ao carregar alertas de estoque.")
+    
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN (Movida para o final para resolver NameError)
 # ==============================================================================

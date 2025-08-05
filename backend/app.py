@@ -457,50 +457,6 @@ def registrar_saida():
 
 
 
-@app.route('/api/dashboard/estoque-baixo', methods=['GET'])
-@jwt_required()
-def get_produtos_estoque_baixo():
-    """Retorna uma lista de produtos com saldo de estoque abaixo de um limite."""
-    try:
-        limite = request.args.get('limite', default=10, type=int)
-
-        subquery = db.session.query(
-            MovimentacaoEstoque.id_produto,
-            db.func.sum(
-                case(
-                    (MovimentacaoEstoque.tipo == 'Entrada', MovimentacaoEstoque.quantidade),
-                    (MovimentacaoEstoque.tipo == 'Saida', -MovimentacaoEstoque.quantidade),
-                    else_=0
-                )
-            ).label('saldo')
-        ).group_by(MovimentacaoEstoque.id_produto).subquery()
-
-        produtos_baixo_estoque = db.session.query(
-            Produto,
-            db.func.coalesce(subquery.c.saldo, 0).label('saldo_final')
-        ).outerjoin(
-            subquery, Produto.id_produto == subquery.c.id_produto
-        ).having(
-            db.func.coalesce(subquery.c.saldo, 0) < limite
-        ).order_by(
-            db.func.coalesce(subquery.c.saldo, 0)
-        ).all()
-
-        resultado_json = []
-        for produto, saldo in produtos_baixo_estoque:
-            resultado_json.append({
-                'id_produto': produto.id_produto,
-                'nome': produto.nome,
-                'codigo': produto.codigo.strip(),
-                'saldo_atual': int(saldo) if saldo is not None else 0
-            })
-
-        return jsonify(resultado_json), 200
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 500
-
-
-
 @app.route('/api/estoque/saldos', methods=['GET'])
 @jwt_required()
 def get_saldos_estoque():
