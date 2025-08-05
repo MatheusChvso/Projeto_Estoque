@@ -380,80 +380,55 @@ class FormularioUsuarioDialog(QDialog):
                 self.input_permissao.setCurrentText(dados.get('permissao', 'Usuario'))
             else:
                 QMessageBox.warning(self, "Erro", "Não foi possível carregar os dados do usuário.")
-                self.reject() # Fecha o diálogo se não conseguir carregar
+                self.reject()
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar dados: {e}")
             self.reject()
 
     def accept(self):
-        """
-        Coleta todos os dados do formulário, incluindo as listas de IDs das
-        associações, e envia tudo em um único pedido POST (para criar) ou
-        PUT (para editar) para a API.
-        """
+        """Envia os dados para a API para criar ou editar um usuário."""
         global access_token
-        headers = {'Authorization': f'Bearer {access_token}'}
         
-        # 1. Coleta os dados básicos do produto
-        dados_produto = {
-            "codigo": self.input_codigo.text(),
+        # Validação no front-end
+        if not self.input_nome.text().strip() or not self.input_login.text().strip():
+            QMessageBox.warning(self, "Campos Obrigatórios", "Os campos Nome e Login são obrigatórios.")
+            return
+        
+        # Cria o dicionário APENAS com os dados do usuário
+        dados = {
             "nome": self.input_nome.text(),
-            "descricao": self.input_descricao.text(),
-            "preco": self.input_preco.text().replace(',', '.'), # Garante o formato decimal correto
-            "codigoB": self.input_codigoB.text(),
-            "codigoC": self.input_codigoC.text()
+            "login": self.input_login.text(),
+            "permissao": self.input_permissao.currentText()
         }
 
-        # 2. Coleta os IDs dos fornecedores e naturezas selecionados nas listas
-        ids_fornecedores_selecionados = [
-            self.lista_fornecedores.item(i).data(Qt.UserRole) 
-            for i in range(self.lista_fornecedores.count()) 
-            if self.lista_fornecedores.item(i).isSelected()
-        ]
-        
-        ids_naturezas_selecionadas = [
-            self.lista_naturezas.item(i).data(Qt.UserRole)
-            for i in range(self.lista_naturezas.count())
-            if self.lista_naturezas.item(i).isSelected()
-        ]
+        # Adiciona a senha ao dicionário SOMENTE se o campo não estiver vazio
+        if self.input_senha.text():
+            dados['senha'] = self.input_senha.text()
+        elif self.usuario_id is None: # Se for um novo usuário, a senha é obrigatória
+            QMessageBox.warning(self, "Campo Obrigatório", "A senha é obrigatória para novos usuários.")
+            return
 
+        headers = {'Authorization': f'Bearer {access_token}'}
         try:
-            if self.produto_id is None: # --- MODO ADICIONAR (POST) ---
-                # No modo de adição, primeiro criamos o produto
-                url_produto = "http://127.0.0.1:5000/api/produtos"
-                response_produto = requests.post(url_produto, headers=headers, json=dados_produto)
-                
-                if response_produto.status_code != 201:
-                    raise Exception(response_produto.json().get('erro', 'Erro ao criar produto'))
-                
-                # Se o produto foi criado com sucesso, agora usamos o ID retornado
-                # e fazemos um PUT para adicionar as associações
-                produto_salvo_id = response_produto.json().get('id_produto_criado')
-                dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
-                dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
-                
-                url_update = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}"
-                response_update = requests.put(url_update, headers=headers, json=dados_produto)
-
-                if response_update.status_code != 200:
-                    raise Exception(response_update.json().get('erro', 'Produto criado, mas falha ao salvar associações'))
-
-            else: # --- MODO EDITAR (PUT) ---
-                # No modo de edição, já enviamos tudo de uma vez
-                dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
-                dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
-                
-                url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
-                response = requests.put(url, headers=headers, json=dados_produto)
-
-                if response.status_code != 200:
-                    raise Exception(response.json().get('erro', 'Erro ao atualizar produto'))
-
-            QMessageBox.information(self, "Sucesso", "Produto salvo com sucesso!")
-            super().accept() # Fecha o diálogo com sucesso
+            if self.usuario_id is None: # Modo Adicionar
+                url = "http://127.0.0.1:5000/api/usuarios"
+                response = requests.post(url, headers=headers, json=dados)
+                mensagem_sucesso = "Usuário adicionado com sucesso!"
+                status_esperado = 201
+            else: # Modo Editar
+                url = f"http://127.0.0.1:5000/api/usuarios/{self.usuario_id}"
+                response = requests.put(url, headers=headers, json=dados)
+                mensagem_sucesso = "Usuário atualizado com sucesso!"
+                status_esperado = 200
+            
+            if response.status_code == status_esperado:
+                QMessageBox.information(self, "Sucesso", mensagem_sucesso)
+                super().accept()
+            else:
+                raise Exception(response.json().get('erro', 'Erro desconhecido'))
 
         except Exception as e:
-            QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
+            QMessageBox.warning(self, "Erro", f"Não foi possível salvar o usuário: {e}")
 
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
