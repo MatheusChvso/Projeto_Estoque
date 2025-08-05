@@ -264,3 +264,8 @@ QPushButton#btnQuickAdd:hover {
 QPushButton#btnQuickAdd:pressed {
     background-color: #218838;
 }
+
+QTableWidget::item:selected {
+    background-color: #0078d7; /* Nosso azul de destaque */
+    color: white;              /* Texto branco para contraste máximo */
+}
