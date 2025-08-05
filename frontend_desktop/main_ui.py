@@ -20,11 +20,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtWidgets import QDateEdit, QCalendarWidget, QMenu
 from PySide6.QtCore import Qt, QTimer, Signal, QDate, QEvent
 from PySide6.QtGui import QKeySequence
-
+from config import SERVER_IP
 # ==============================================================================
 # 2. VARIÁVEIS GLOBAIS
 # ==============================================================================
 access_token = None
+
+
+API_BASE_URL = f"http://{SERVER_IP}:5000"
 
 # ==============================================================================
 # 3. JANELAS DE DIÁLOGO (FORMULÁRIOS)
@@ -145,7 +148,7 @@ class FormularioProdutoDialog(QDialog):
             return
     
         global access_token
-        url = f"http://127.0.0.1:5000/api/produtos/codigo/{codigo}"
+        url = f"API_BASE_URL/api/produtos/codigo/{codigo}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -187,7 +190,7 @@ class FormularioProdutoDialog(QDialog):
         # ... (seu código aqui continua exatamente igual)
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
-            url_forn = "http://127.0.0.1:5000/api/fornecedores"
+            url_forn = "API_BASE_URL/api/fornecedores"
             response_forn = requests.get(url_forn, headers=headers)
             if response_forn.status_code == 200:
                 for forn in response_forn.json():
@@ -195,7 +198,7 @@ class FormularioProdutoDialog(QDialog):
                     item.setData(Qt.UserRole, forn['id'])
                     self.lista_fornecedores.addItem(item)
             
-            url_nat = "http://127.0.0.1:5000/api/naturezas"
+            url_nat = "API_BASE_URL/api/naturezas"
             response_nat = requests.get(url_nat, headers=headers)
             if response_nat.status_code == 200:
                 for nat in response_nat.json():
@@ -208,7 +211,7 @@ class FormularioProdutoDialog(QDialog):
     def carregar_dados_produto(self):
         global access_token
         # ... (seu código aqui continua exatamente igual)
-        url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
+        url = f"API_BASE_URL/api/produtos/{self.produto_id}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -278,7 +281,7 @@ class FormularioProdutoDialog(QDialog):
         try:
             if self.produto_id is None: # --- MODO ADICIONAR ---
                 # Primeiro cria o produto com POST
-                url_produto = "http://127.0.0.1:5000/api/produtos"
+                url_produto = "API_BASE_URL/api/produtos"
                 response_produto = requests.post(url_produto, headers=headers, json=dados_produto)
                 if response_produto.status_code != 201:
                     raise Exception(response_produto.json().get('erro', 'Erro ao criar produto'))
@@ -287,7 +290,7 @@ class FormularioProdutoDialog(QDialog):
                 produto_salvo_id = response_produto.json().get('id_produto_criado')
                 dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
                 dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
-                url_update = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}"
+                url_update = f"API_BASE_URL/api/produtos/{produto_salvo_id}"
                 response_update = requests.put(url_update, headers=headers, json=dados_produto)
     
                 if response_update.status_code != 200:
@@ -298,7 +301,7 @@ class FormularioProdutoDialog(QDialog):
                 dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
                 dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
                 
-                url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
+                url = f"API_BASE_URL/api/produtos/{self.produto_id}"
                 response = requests.put(url, headers=headers, json=dados_produto)
     
                 if response.status_code != 200:
@@ -332,7 +335,7 @@ class FormularioFornecedorDialog(QDialog):
 
     def carregar_dados_fornecedor(self):
         global access_token
-        url = f"http://127.0.0.1:5000/api/fornecedores/{self.fornecedor_id}"
+        url = f"API_BASE_URL/api/fornecedores/{self.fornecedor_id}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -349,13 +352,13 @@ class FormularioFornecedorDialog(QDialog):
         dados = {"nome": self.input_nome.text()}
         try:
             if self.fornecedor_id is None:
-                response = requests.post("http://127.0.0.1:5000/api/fornecedores", headers=headers, json=dados)
+                response = requests.post("API_BASE_URL/api/fornecedores", headers=headers, json=dados)
                 if response.status_code == 201:
                     QMessageBox.information(self, "Sucesso", "Fornecedor adicionado com sucesso!")
                     super().accept()
                 else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
             else:
-                url = f"http://127.0.0.1:5000/api/fornecedores/{self.fornecedor_id}"
+                url = f"API_BASE_URL/api/fornecedores/{self.fornecedor_id}"
                 response = requests.put(url, headers=headers, json=dados)
                 if response.status_code == 200:
                     QMessageBox.information(self, "Sucesso", "Fornecedor atualizado com sucesso!")
@@ -385,7 +388,7 @@ class FormularioNaturezaDialog(QDialog):
 
     def carregar_dados_natureza(self):
         global access_token
-        url = f"http://127.0.0.1:5000/api/naturezas/{self.natureza_id}"
+        url = f"API_BASE_URL/api/naturezas/{self.natureza_id}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -402,13 +405,13 @@ class FormularioNaturezaDialog(QDialog):
         dados = {"nome": self.input_nome.text()}
         try:
             if self.natureza_id is None:
-                response = requests.post("http://127.0.0.1:5000/api/naturezas", headers=headers, json=dados)
+                response = requests.post("API_BASE_URL/api/naturezas", headers=headers, json=dados)
                 if response.status_code == 201:
                     QMessageBox.information(self, "Sucesso", "Natureza adicionada com sucesso!")
                     super().accept()
                 else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
             else:
-                url = f"http://127.0.0.1:5000/api/naturezas/{self.natureza_id}"
+                url = f"API_BASE_URL/api/naturezas/{self.natureza_id}"
                 response = requests.put(url, headers=headers, json=dados)
                 if response.status_code == 200:
                     QMessageBox.information(self, "Sucesso", "Natureza atualizada com sucesso!")
@@ -448,7 +451,7 @@ class QuickAddDialog(QDialog):
             return
 
         global access_token
-        url = f"http://127.0.0.1:5000{self.endpoint}"
+        url = f"API_BASE_URL{self.endpoint}"
         headers = {'Authorization': f'Bearer {access_token}'}
         dados = {"nome": nome}
 
@@ -497,7 +500,7 @@ class FormularioUsuarioDialog(QDialog):
     def carregar_dados_usuario(self):
         """Busca os dados de um usuário específico na API para preencher o formulário."""
         global access_token
-        url = f"http://127.0.0.1:5000/api/usuarios/{self.usuario_id}"
+        url = f"API_BASE_URL/api/usuarios/{self.usuario_id}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -539,12 +542,12 @@ class FormularioUsuarioDialog(QDialog):
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             if self.usuario_id is None: # Modo Adicionar
-                url = "http://127.0.0.1:5000/api/usuarios"
+                url = "API_BASE_URL/api/usuarios"
                 response = requests.post(url, headers=headers, json=dados)
                 mensagem_sucesso = "Usuário adicionado com sucesso!"
                 status_esperado = 201
             else: # Modo Editar
-                url = f"http://127.0.0.1:5000/api/usuarios/{self.usuario_id}"
+                url = f"API_BASE_URL/api/usuarios/{self.usuario_id}"
                 response = requests.put(url, headers=headers, json=dados)
                 mensagem_sucesso = "Usuário atualizado com sucesso!"
                 status_esperado = 200
@@ -645,7 +648,7 @@ class ProdutosWidget(QWidget):
 
         if resposta == QMessageBox.StandardButton.Yes:
             global access_token
-            url = f"http://127.0.0.1:5000/api/produtos/{produto_id}"
+            url = f"API_BASE_URL/api/produtos/{produto_id}"
             headers = {'Authorization': f'Bearer {access_token}'}
             try:
                 response = requests.delete(url, headers=headers)
@@ -664,7 +667,7 @@ class ProdutosWidget(QWidget):
 
     def carregar_produtos(self):
         global access_token
-        url = "http://127.0.0.1:5000/api/produtos"
+        url = "API_BASE_URL/api/produtos"
         headers = {'Authorization': f'Bearer {access_token}'}
         params = {'search': self.input_pesquisa.text()} if self.input_pesquisa.text() else {}
         
@@ -749,7 +752,7 @@ class SaldosWidget(QWidget):
     def carregar_dados_estoque(self):
         """Busca os dados mais recentes da API e os armazena localmente."""
         global access_token
-        url = "http://127.0.0.1:5000/api/estoque/saldos"
+        url = "API_BASE_URL/api/estoque/saldos"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -840,7 +843,7 @@ class HistoricoWidget(QWidget):
     def carregar_historico(self):
         """Busca o histórico completo da API e o armazena localmente."""
         global access_token
-        url = "http://127.0.0.1:5000/api/movimentacoes"
+        url = "API_BASE_URL/api/movimentacoes"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -966,10 +969,10 @@ class RelatoriosWidget(QWidget):
         nome_arquivo_base = ""
 
         if relatorio_selecionado == "Inventário Atual":
-            endpoint = "http://127.0.0.1:5000/api/relatorios/inventario"
+            endpoint = "API_BASE_URL/api/relatorios/inventario"
             nome_arquivo_base = "relatorio_inventario"
         else: # Histórico de Movimentações
-            endpoint = "http://127.0.0.1:5000/api/relatorios/movimentacoes"
+            endpoint = "API_BASE_URL/api/relatorios/movimentacoes"
             nome_arquivo_base = "relatorio_movimentacoes"
             
             # Adiciona os parâmetros de filtro
@@ -1090,7 +1093,7 @@ class FornecedoresWidget(QWidget):
 
     def carregar_fornecedores(self):
         global access_token
-        url = "http://127.0.0.1:5000/api/fornecedores"
+        url = "API_BASE_URL/api/fornecedores"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -1133,7 +1136,7 @@ class FornecedoresWidget(QWidget):
         resposta = QMessageBox.question(self, "Confirmar Exclusão", f"Tem a certeza de que deseja excluir o fornecedor '{nome_fornecedor}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resposta == QMessageBox.StandardButton.Yes:
             global access_token
-            url = f"http://127.0.0.1:5000/api/fornecedores/{fornecedor_id}"
+            url = f"API_BASE_URL/api/fornecedores/{fornecedor_id}"
             headers = {'Authorization': f'Bearer {access_token}'}
             try:
                 response = requests.delete(url, headers=headers)
@@ -1183,7 +1186,7 @@ class NaturezasWidget(QWidget):
 
     def carregar_naturezas(self):
         global access_token
-        url = "http://127.0.0.1:5000/api/naturezas"
+        url = "API_BASE_URL/api/naturezas"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -1226,7 +1229,7 @@ class NaturezasWidget(QWidget):
         resposta = QMessageBox.question(self, "Confirmar Exclusão", f"Tem a certeza de que deseja excluir a natureza '{nome_natureza}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if resposta == QMessageBox.StandardButton.Yes:
             global access_token
-            url = f"http://127.0.0.1:5000/api/naturezas/{natureza_id}"
+            url = f"API_BASE_URL/api/naturezas/{natureza_id}"
             headers = {'Authorization': f'Bearer {access_token}'}
             try:
                 response = requests.delete(url, headers=headers)
@@ -1310,7 +1313,7 @@ class EntradaRapidaWidget(QWidget):
             return
 
         global access_token
-        url = f"http://127.0.0.1:5000/api/produtos/codigo/{codigo_produto}"
+        url = f"API_BASE_URL/api/produtos/codigo/{codigo_produto}"
         headers = {'Authorization': f'Bearer {access_token}'}
 
         try:
@@ -1342,7 +1345,7 @@ class EntradaRapidaWidget(QWidget):
             return
 
         global access_token
-        url = "http://127.0.0.1:5000/api/estoque/entrada"
+        url = "API_BASE_URL/api/estoque/entrada"
         headers = {'Authorization': f'Bearer {access_token}'}
         dados = {
             "id_produto": self.produto_encontrado_id,
@@ -1448,7 +1451,7 @@ class SaidaRapidaWidget(QWidget):
         codigo_produto = self.input_codigo.text().strip()
         if not codigo_produto: return
         global access_token
-        url = f"http://127.0.0.1:5000/api/produtos/codigo/{codigo_produto}"
+        url = f"API_BASE_URL/api/produtos/codigo/{codigo_produto}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -1481,7 +1484,7 @@ class SaidaRapidaWidget(QWidget):
             return
 
         global access_token
-        url = "http://127.0.0.1:5000/api/estoque/saida"
+        url = "API_BASE_URL/api/estoque/saida"
         headers = {'Authorization': f'Bearer {access_token}'}
         dados = {
             "id_produto": self.produto_encontrado_id,
@@ -1555,7 +1558,7 @@ class UsuariosWidget(QWidget):
 
     def carregar_usuarios(self):
         global access_token
-        url = "http://127.0.0.1:5000/api/usuarios"
+        url = "API_BASE_URL/api/usuarios"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
@@ -1622,7 +1625,7 @@ class UsuariosWidget(QWidget):
             # --- DEBUG: Adicione esta linha para ver o ID no terminal ---
             print(f"Tentando {acao} usuário com ID: {usuario_id}")
             
-            url = f"http://127.0.0.1:5000/api/usuarios/{usuario_id}"
+            url = f"API_BASE_URL/api/usuarios/{usuario_id}"
             headers = {'Authorization': f'Bearer {access_token}'}
             try:
                 response = requests.delete(url, headers=headers)
@@ -1983,7 +1986,7 @@ class DashboardWidget(QWidget):
 
     def carregar_kpis(self):
         global access_token
-        url = "http://127.0.0.1:5000/api/dashboard/kpis"
+        url = "API_BASE_URL/api/dashboard/kpis"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers, timeout=5)
@@ -2040,7 +2043,7 @@ class JanelaLogin(QWidget):
             QMessageBox.warning(self, "Erro de Entrada", "Os campos de login e senha não podem estar vazios.")
             return
 
-        url = "http://127.0.0.1:5000/api/login"
+        url = "API_BASE_URL/api/login"
         dados = {"login": login, "senha": senha}
 
         try:
@@ -2051,7 +2054,7 @@ class JanelaLogin(QWidget):
                 
                 # Busca os dados do usuário logado
                 headers = {'Authorization': f'Bearer {access_token}'}
-                url_me = "http://127.0.0.1:5000/api/usuario/me"
+                url_me = "API_BASE_URL/api/usuario/me"
                 response_me = requests.get(url_me, headers=headers)
                 
                 if response_me.status_code == 200:
