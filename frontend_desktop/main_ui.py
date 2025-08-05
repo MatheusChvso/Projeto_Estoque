@@ -56,20 +56,59 @@ class FormularioProdutoDialog(QDialog):
         self.lista_naturezas.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.lista_naturezas.setMaximumHeight(100)
         
+                # --- NOVO WIDGET PARA STATUS DO CÓDIGO ---
+        # Criamos um layout horizontal para o campo de código e a mensagem de status
+        layout_codigo = QHBoxLayout()
+        self.label_status_codigo = QLabel("") # Começa vazia
+        self.label_status_codigo.setFixedWidth(100) # Tamanho fixo para não "empurrar" o layout
+        layout_codigo.addWidget(self.input_codigo)
+        layout_codigo.addWidget(self.label_status_codigo)
+        
+        # --- TEMPORIZADOR PARA A VERIFICAÇÃO ---
+        self.verificacao_timer = QTimer(self)
+        self.verificacao_timer.setSingleShot(True)
+        self.verificacao_timer.timeout.connect(self.verificar_codigo_produto)
+        
+        # Conecta o sinal de texto alterado ao início do temporizador
+        self.input_codigo.textChanged.connect(self.iniciar_verificacao_timer)
         # --- MUDANÇA PRINCIPAL: INSTALANDO O FILTRO DE EVENTOS ---
         # Em vez de conectar o sinal 'returnPressed', nós instalamos um filtro.
         # self (o diálogo) agora vai vigiar os eventos do input_codigo.
         self.input_codigo.installEventFilter(self)
         
-        self.layout.addRow("Código:", self.input_codigo)
+        self.layout.addRow("Código:", layout_codigo)
         self.layout.addRow("Nome:", self.input_nome)
         self.layout.addRow("Descrição:", self.input_descricao)
         self.layout.addRow("Preço:", self.input_preco)
         self.layout.addRow("Código B:", self.input_codigoB)
         self.layout.addRow("Código C:", self.input_codigoC)
-        self.layout.addRow("Fornecedores:", self.lista_fornecedores)
-        self.layout.addRow("Naturezas:", self.lista_naturezas)
-
+        label_fornecedores = QLabel("Fornecedores:")
+        self.btn_add_fornecedor = QPushButton("+")
+        self.btn_add_fornecedor.setFixedSize(25, 25)
+        self.btn_add_fornecedor.setObjectName("btnQuickAdd")
+        layout_forn = QHBoxLayout()
+        layout_forn.addWidget(label_fornecedores)
+        layout_forn.addWidget(self.btn_add_fornecedor)
+        layout_forn.addStretch(1)
+        
+        # Naturezas
+        label_naturezas = QLabel("Naturezas:")
+        self.btn_add_natureza = QPushButton("+")
+        self.btn_add_natureza.setFixedSize(25, 25)
+        self.btn_add_natureza.setObjectName("btnQuickAdd")
+        layout_nat = QHBoxLayout()
+        layout_nat.addWidget(label_naturezas)
+        layout_nat.addWidget(self.btn_add_natureza)
+        layout_nat.addStretch(1)
+        
+        self.layout.addRow(layout_forn)
+        self.layout.addRow(self.lista_fornecedores)
+        self.layout.addRow(layout_nat)
+        self.layout.addRow(self.lista_naturezas)
+        
+        self.btn_add_fornecedor.clicked.connect(self.adicionar_rapido_fornecedor)
+        self.btn_add_natureza.clicked.connect(self.adicionar_rapido_natureza)
+    
         self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         self.botoes.accepted.connect(self.accept)
         self.botoes.rejected.connect(self.reject)
@@ -83,6 +122,53 @@ class FormularioProdutoDialog(QDialog):
         if self.produto_id:
             self.carregar_dados_produto()
 
+   
+    def adicionar_rapido_fornecedor(self):
+        """Abre o diálogo de adição rápida para um novo fornecedor."""
+        dialog = QuickAddDialog(self, "Adicionar Novo Fornecedor", "/api/fornecedores")
+        # Conecta o sinal do diálogo para recarregar a nossa lista
+        dialog.item_adicionado.connect(self.carregar_listas_de_apoio)
+        dialog.exec()
+
+    def adicionar_rapido_natureza(self):
+        """Abre o diálogo de adição rápida para uma nova natureza."""
+        dialog = QuickAddDialog(self, "Adicionar Nova Natureza", "/api/naturezas")
+        # Conecta o sinal do diálogo para recarregar a nossa lista
+        dialog.item_adicionado.connect(self.carregar_listas_de_apoio)
+        dialog.exec()
+       
+    def iniciar_verificacao_timer(self):
+        """Reinicia o temporizador sempre que o texto do código é alterado."""
+        # A verificação só faz sentido no modo de adição
+        if self.produto_id is None:
+            self.label_status_codigo.setText("Verificando...")
+            self.verificacao_timer.stop()
+            self.verificacao_timer.start(500) # Espera 500ms (meio segundo)
+
+    def verificar_codigo_produto(self):
+        """Chama a API para verificar se o código de produto já existe."""
+        codigo = self.input_codigo.text().strip()
+        if not codigo:
+            self.label_status_codigo.setText("")
+            return
+    
+        global access_token
+        url = f"http://127.0.0.1:5000/api/produtos/codigo/{codigo}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 404: # 404 Not Found é o que esperamos!
+                self.label_status_codigo.setText("✅ Disponível")
+                self.label_status_codigo.setStyleSheet("color: #28a745;") # Verde
+            elif response.status_code == 200:
+                self.label_status_codigo.setText("❌ Já existe!")
+                self.label_status_codigo.setStyleSheet("color: #dc3545;") # Vermelho
+            else:
+                self.label_status_codigo.setText("")
+        except requests.exceptions.RequestException:
+            self.label_status_codigo.setText("⚠️ Erro")
+            self.label_status_codigo.setStyleSheet("color: #ffc107;") # Amarelo
+       
     # --- NOVO MÉTODO: O FILTRO DE EVENTOS ---
     def eventFilter(self, source, event):
         """
@@ -339,7 +425,51 @@ class FormularioNaturezaDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar a natureza: {e}")
 
+class QuickAddDialog(QDialog):
+    """Um diálogo genérico para adicionar rapidamente um item com apenas um nome."""
+    item_adicionado = Signal() # Sinal para avisar que um novo item foi salvo
 
+    def __init__(self, parent, titulo, endpoint):
+        super().__init__(parent)
+        self.setWindowTitle(titulo)
+        self.endpoint = endpoint
+        self.setMinimumWidth(300)
+
+        self.layout = QVBoxLayout(self)
+        self.form_layout = QFormLayout()
+        
+        self.input_nome = QLineEdit()
+        self.form_layout.addRow("Nome:", self.input_nome)
+        
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        
+        self.layout.addLayout(self.form_layout)
+        self.layout.addWidget(self.botoes)
+
+        self.botoes.accepted.connect(self.accept)
+        self.botoes.rejected.connect(self.reject)
+
+    def accept(self):
+        nome = self.input_nome.text().strip()
+        if not nome:
+            QMessageBox.warning(self, "Erro", "O campo de nome não pode estar vazio.")
+            return
+
+        global access_token
+        url = f"http://127.0.0.1:5000{self.endpoint}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        dados = {"nome": nome}
+
+        try:
+            response = requests.post(url, headers=headers, json=dados)
+            if response.status_code == 201:
+                QMessageBox.information(self, "Sucesso", "Item adicionado com sucesso!")
+                self.item_adicionado.emit() # Emite o sinal de sucesso!
+                super().accept()
+            else:
+                raise Exception(response.json().get('erro', 'Erro desconhecido'))
+        except Exception as e:
+            QMessageBox.warning(self, "Erro", f"Não foi possível salvar o item: {e}")
 
 # TRECHO 1: ADICIONAR esta nova classe ao main_ui.py
 

@@ -236,3 +236,31 @@ QFrame#frameAlertas {
     border-radius: 8px;
     margin-top: 15px;
 }
+
+QListWidget::item:selected {
+    background-color: #0078d7; /* O mesmo azul de destaque */
+    color: white;
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+QPushButton#btnQuickAdd {
+    background-color: #28a745; /* Verde de "Adicionar" */
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    border: 1px solid #218838;
+    
+    /* Chave para o visual: remove o padding e cria um círculo */
+    padding: 0px; 
+    border-radius: 12px; /* Metade do tamanho (25px) para um círculo perfeito */
+}
+
+QPushButton#btnQuickAdd:hover {
+    background-color: #2ebf4f;
+    border-color: #28a745;
+}
+
+QPushButton#btnQuickAdd:pressed {
+    background-color: #218838;
+}
