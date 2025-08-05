@@ -1518,19 +1518,21 @@ class UsuariosWidget(QWidget):
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
+# Em main_ui.py, substitua a sua classe JanelaPrincipal inteira por esta versão
+
 class JanelaPrincipal(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Sistema de Gestão de Estoque")
         self.resize(1280, 720)
     
-        # Inicializa com dados vazios
         self.dados_usuario = {}
     
-        # --- ÁREA DE CONTEÚDO (criada antes para que as ações possam se conectar) ---
+        # --- ÁREA DE CONTEÚDO ---
         self.stacked_widget = QStackedWidget()
         self.stacked_widget.setObjectName("mainContentArea")
         
+        # --- MUDANÇA 1: Criamos todas as telas, EXCETO a de usuários ---
         self.tela_dashboard = DashboardWidget()
         self.tela_produtos = ProdutosWidget()
         self.tela_estoque = EstoqueWidget()
@@ -1539,8 +1541,8 @@ class JanelaPrincipal(QMainWindow):
         self.tela_relatorios = RelatoriosWidget()
         self.tela_fornecedores = FornecedoresWidget()
         self.tela_naturezas = NaturezasWidget()
-        self.tela_usuarios = UsuariosWidget()
-    
+        self.tela_usuarios = None # <<< INICIALIZAMOS COMO NULO
+
         self.stacked_widget.addWidget(self.tela_dashboard)
         self.stacked_widget.addWidget(self.tela_produtos)
         self.stacked_widget.addWidget(self.tela_estoque)
@@ -1549,11 +1551,19 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.addWidget(self.tela_relatorios)
         self.stacked_widget.addWidget(self.tela_fornecedores)
         self.stacked_widget.addWidget(self.tela_naturezas)
-        self.stacked_widget.addWidget(self.tela_usuarios)
+        # Não adicionamos a tela de usuários ao stack ainda
     
-        # --- BARRA DE MENUS APRIMORADA ---
+        # --- BARRA DE MENUS (continua igual) ---
         menu_bar = self.menuBar()
-    
+        self.menu_cadastros = menu_bar.addMenu("&Cadastros")
+        # ... (todo o resto do seu __init__ da JanelaPrincipal continua exatamente igual)
+        # ... (menus, painel lateral, conexões, etc.)
+        # O resto do seu __init__ pode ser colado aqui sem problemas.
+        # Para evitar um bloco de código gigante, vou omitir o resto do __init__
+        # pois ele não muda. Apenas certifique-se de que o resto do seu código
+        # do __init__ esteja aqui.
+        
+        # Cole o resto do seu __init__ a partir daqui...
         # 1. Menu Arquivo
         menu_arquivo = menu_bar.addMenu("&Arquivo")
         acao_dashboard = QAction("Dashboard", self)
@@ -1561,30 +1571,27 @@ class JanelaPrincipal(QMainWindow):
         menu_arquivo.addAction(acao_dashboard)
         menu_arquivo.addSeparator()
         acao_sair = QAction("Sair", self)
-        acao_sair.setShortcut(QKeySequence.Quit) # Atalho Ctrl+Q
+        acao_sair.setShortcut(QKeySequence.Quit)
         acao_sair.triggered.connect(self.close)
         menu_arquivo.addAction(acao_sair)
-    
+
         # 2. Menu Cadastros
-        # A ORDEM CORRETA É ESTA: PRIMEIRO CRIAR, DEPOIS USAR
-        self.menu_cadastros = menu_bar.addMenu("&Cadastros") # <<< CRIAÇÃO
-        
         self.acao_produtos = QAction("Produtos...", self)
         self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
-        self.menu_cadastros.addAction(self.acao_produtos) # <<< USO
+        self.menu_cadastros.addAction(self.acao_produtos)
         
         self.acao_fornecedores = QAction("Fornecedores...", self)
         self.acao_fornecedores.triggered.connect(self.mostrar_tela_fornecedores)
-        self.menu_cadastros.addAction(self.acao_fornecedores) # <<< USO
+        self.menu_cadastros.addAction(self.acao_fornecedores)
         
         self.acao_naturezas = QAction("Naturezas...", self)
         self.acao_naturezas.triggered.connect(self.mostrar_tela_naturezas)
-        self.menu_cadastros.addAction(self.acao_naturezas) # <<< USO
+        self.menu_cadastros.addAction(self.acao_naturezas)
         
-        self.menu_cadastros.addSeparator() # <<< USO
-        self.acao_usuarios = QAction("Usuários...", self) # Ação é criada, mas adicionada ao menu depois
+        self.menu_cadastros.addSeparator()
+        self.acao_usuarios = QAction("Usuários...", self)
         self.acao_usuarios.triggered.connect(self.mostrar_tela_usuarios)
-    
+
         # 3. Menu Operações
         menu_operacoes = menu_bar.addMenu("&Operações")
         acao_entrada = QAction("Entrada Rápida de Estoque...", self)
@@ -1603,31 +1610,31 @@ class JanelaPrincipal(QMainWindow):
         acao_historico = QAction("Ver Histórico de Movimentações...", self)
         acao_historico.triggered.connect(lambda: (self.mostrar_tela_estoque(), self.tela_estoque.mostrar_historico()))
         menu_operacoes.addAction(acao_historico)
-    
+
         # 4. Menu Relatórios
         menu_relatorios = menu_bar.addMenu("&Relatórios")
         acao_gerar_relatorio = QAction("Gerar Relatório...", self)
         acao_gerar_relatorio.triggered.connect(self.mostrar_tela_relatorios)
         menu_relatorios.addAction(acao_gerar_relatorio)
-    
+
         # 5. Menu Ajuda
         menu_ajuda = menu_bar.addMenu("&Ajuda")
         acao_sobre = QAction("Sobre...", self)
         acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
         menu_ajuda.addAction(acao_sobre)
-    
+
         # --- LAYOUT GERAL E WIDGET CENTRAL ---
         widget_central = QWidget()
         self.setCentralWidget(widget_central)
         layout_principal = QHBoxLayout(widget_central)
-    
+
         # --- PAINEL DE NAVEGAÇÃO LATERAL ---
         painel_lateral = QWidget()
         painel_lateral.setObjectName("painelLateral")
         painel_lateral.setFixedWidth(220)
         self.layout_painel_lateral = QVBoxLayout(painel_lateral)
         self.layout_painel_lateral.setAlignment(Qt.AlignTop)
-    
+
         self.btn_dashboard = QPushButton("🏠 Dashboard")
         self.btn_produtos = QPushButton("📦 Produtos")
         self.btn_estoque = QPushButton("📊 Estoque")
@@ -1637,7 +1644,7 @@ class JanelaPrincipal(QMainWindow):
         self.btn_fornecedores = QPushButton("🚚 Fornecedores")
         self.btn_naturezas = QPushButton("🌿 Naturezas")
         self.btn_usuarios = QPushButton("👥 Usuários")
-    
+
         self.layout_painel_lateral.addWidget(self.btn_dashboard)
         self.layout_painel_lateral.addWidget(self.btn_produtos)
         self.layout_painel_lateral.addWidget(self.btn_estoque)
@@ -1650,7 +1657,7 @@ class JanelaPrincipal(QMainWindow):
         self.layout_painel_lateral.addStretch(1)
         layout_principal.addWidget(painel_lateral)
         layout_principal.addWidget(self.stacked_widget)
-    
+
         # --- CONEXÕES ---
         self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
         self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
@@ -1661,52 +1668,15 @@ class JanelaPrincipal(QMainWindow):
         self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
         self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
         
-        # Conexões de sinais entre widgets
         self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
         self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
         self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
         self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
-    
+
         self.statusBar().showMessage("Pronto.")
 
-    def mostrar_tela_dashboard(self):
-        # Agora, este método carrega os dados antes de mostrar a tela
-        self.tela_dashboard.carregar_dados_dashboard()
-        self.stacked_widget.setCurrentWidget(self.tela_dashboard)
-        
-    def mostrar_tela_entrada_rapida(self):
-        """Mostra a tela de entrada rápida e reseta seu estado."""
-        self.tela_entrada_rapida.resetar_formulario()
-        self.stacked_widget.setCurrentWidget(self.tela_entrada_rapida)
-        
-    def mostrar_tela_saida_rapida(self):
-        """Mostra a tela de saída rápida e reseta seu estado."""
-        self.tela_saida_rapida.resetar_formulario()
-        self.stacked_widget.setCurrentWidget(self.tela_saida_rapida)
 
-    def mostrar_tela_produtos(self):
-        self.stacked_widget.setCurrentWidget(self.tela_produtos)
-        
-    def mostrar_tela_relatorios(self):
-        """Mostra a tela de geração de relatórios."""
-        self.stacked_widget.setCurrentWidget(self.tela_relatorios)
-
-    def mostrar_tela_estoque(self):
-        """
-        Mostra a widget contêiner de Estoque e garante que a
-        visualização padrão (Saldos) seja exibida e atualizada.
-        """
-        # A nova EstoqueWidget gerencia seu próprio estado.
-        # Apenas precisamos garantir que a visão de saldos é mostrada.
-        self.tela_estoque.mostrar_saldos() 
-        self.stacked_widget.setCurrentWidget(self.tela_estoque)
-        
-    def mostrar_tela_fornecedores(self):    
-        self.stacked_widget.setCurrentWidget(self.tela_fornecedores)
-        
-    def mostrar_tela_naturezas(self):
-        self.stacked_widget.setCurrentWidget(self.tela_naturezas)
-        
+    # --- MUDANÇA 2: O método carregar_dados_usuario agora CRIA a tela ---
     def carregar_dados_usuario(self, dados_usuario):
         """Recebe os dados do usuário logado e ajusta a UI de acordo com as permissões."""
         self.dados_usuario = dados_usuario
@@ -1716,20 +1686,55 @@ class JanelaPrincipal(QMainWindow):
         self.statusBar().showMessage(f"Usuário: {nome_usuario} | Permissão: {permissao_usuario}")
     
         if self.dados_usuario.get('permissao') == 'Administrador':
-            # Adiciona o botão ao painel lateral
+            # Se o usuário é admin, nós criamos a tela de usuários se ela ainda não existir
+            if self.tela_usuarios is None:
+                self.tela_usuarios = UsuariosWidget()
+                self.stacked_widget.addWidget(self.tela_usuarios)
+            
+            # E então mostramos os controles
             self.layout_painel_lateral.insertWidget(self.layout_painel_lateral.count() - 1, self.btn_usuarios)
             self.btn_usuarios.clicked.connect(self.mostrar_tela_usuarios)
-            
-            # Adiciona a ação ao menu de cadastros
             self.menu_cadastros.addAction(self.acao_usuarios)
         else:
             self.btn_usuarios.hide()
             
+    # --- MUDANÇA 3: Adicionamos uma verificação de segurança ---
     def mostrar_tela_usuarios(self):
-        self.stacked_widget.setCurrentWidget(self.tela_usuarios)
+        # Garante que a tela só pode ser mostrada se tiver sido criada
+        if self.tela_usuarios:
+            self.stacked_widget.setCurrentWidget(self.tela_usuarios)
 
+    # Cole o resto dos seus métodos da JanelaPrincipal aqui
+    # (mostrar_tela_dashboard, mostrar_tela_produtos, etc.)
+    def mostrar_tela_dashboard(self):
+        self.tela_dashboard.carregar_dados_dashboard()
+        self.stacked_widget.setCurrentWidget(self.tela_dashboard)
+        
+    def mostrar_tela_entrada_rapida(self):
+        self.tela_entrada_rapida.resetar_formulario()
+        self.stacked_widget.setCurrentWidget(self.tela_entrada_rapida)
+        
+    def mostrar_tela_saida_rapida(self):
+        self.tela_saida_rapida.resetar_formulario()
+        self.stacked_widget.setCurrentWidget(self.tela_saida_rapida)
+
+    def mostrar_tela_produtos(self):
+        self.stacked_widget.setCurrentWidget(self.tela_produtos)
+        
+    def mostrar_tela_relatorios(self):
+        self.stacked_widget.setCurrentWidget(self.tela_relatorios)
+
+    def mostrar_tela_estoque(self):
+        self.tela_estoque.mostrar_saldos() 
+        self.stacked_widget.setCurrentWidget(self.tela_estoque)
+        
+    def mostrar_tela_fornecedores(self):     
+        self.stacked_widget.setCurrentWidget(self.tela_fornecedores)
+        
+    def mostrar_tela_naturezas(self):
+        self.stacked_widget.setCurrentWidget(self.tela_naturezas)
+        
     def mostrar_dialogo_sobre(self):
-        """Exibe uma caixa de diálogo 'Sobre' com informações do sistema."""
         QMessageBox.about(self, 
             "Sobre o Sistema de Gestão de Estoque",
             """
@@ -1739,7 +1744,6 @@ class JanelaPrincipal(QMainWindow):
             <p>Agradecimentos especiais pela colaboração e testes.</p>
             """
         )
-
 #===============================================================================
 #5.1 CLASSES DA DASHBOARD
 #===============================================================================
