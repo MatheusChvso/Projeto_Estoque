@@ -181,9 +181,9 @@ def add_novo_produto():
     try:
         dados = request.get_json()
         required_fields = ['nome', 'codigo', 'preco']
-        if not all(field in dados for field in required_fields):
-            return jsonify({'erro': 'Campos obrigatórios em falta: nome, codigo, preco'}), 400
-
+        if not all(field in dados and dados[field] for field in required_fields):
+            return jsonify({'erro': 'Campos obrigatórios (nome, codigo, preco) não podem estar vazios.'}), 400
+        
         novo_produto = Produto(
             nome=dados['nome'],
             codigo=dados['codigo'],

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QComboBox, QFileDialog
 )
 from PySide6.QtWidgets import QDateEdit, QCalendarWidget
+from PySide6.QtCore import Qt, QTimer, Signal, QDate, QEvent
 # ==============================================================================
 # 2. VARIÁVEIS GLOBAIS
 # ==============================================================================
@@ -27,6 +28,8 @@ access_token = None
 # 3. JANELAS DE DIÁLOGO (FORMULÁRIOS)
 # Definidas primeiro para que possam ser chamadas pelas telas principais.
 # ==============================================================================
+
+# Em main_ui.py, substitua toda a sua classe FormularioProdutoDialog por esta:
 
 class FormularioProdutoDialog(QDialog):
     """Janela de formulário para Adicionar ou Editar um Produto."""
@@ -50,7 +53,12 @@ class FormularioProdutoDialog(QDialog):
         self.lista_naturezas = QListWidget()
         self.lista_naturezas.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
         self.lista_naturezas.setMaximumHeight(100)
-
+        
+        # --- MUDANÇA PRINCIPAL: INSTALANDO O FILTRO DE EVENTOS ---
+        # Em vez de conectar o sinal 'returnPressed', nós instalamos um filtro.
+        # self (o diálogo) agora vai vigiar os eventos do input_codigo.
+        self.input_codigo.installEventFilter(self)
+        
         self.layout.addRow("Código:", self.input_codigo)
         self.layout.addRow("Nome:", self.input_nome)
         self.layout.addRow("Descrição:", self.input_descricao)
@@ -63,14 +71,37 @@ class FormularioProdutoDialog(QDialog):
         self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         self.botoes.accepted.connect(self.accept)
         self.botoes.rejected.connect(self.reject)
+        
+        # A linha setAutoDefault não é mais estritamente necessária com o filtro, mas não prejudica.
+        self.botoes.button(QDialogButtonBox.StandardButton.Save).setAutoDefault(False)
+        
         self.layout.addWidget(self.botoes)
 
         self.carregar_listas_de_apoio()
         if self.produto_id:
             self.carregar_dados_produto()
 
+    # --- NOVO MÉTODO: O FILTRO DE EVENTOS ---
+    def eventFilter(self, source, event):
+        """
+        Este método é chamado para cada evento que ocorre nos widgets 
+        onde o filtro foi instalado.
+        """
+        # Verifica se o evento veio do nosso campo de código e se foi uma tecla pressionada
+        if source is self.input_codigo and event.type() == QEvent.Type.KeyPress:
+            # Verifica se a tecla pressionada foi Enter ou Return
+            if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+                # Se foi, nós executamos nossa ação (mudar o foco)
+                self.input_nome.setFocus()
+                # E retornamos True, que significa: "O evento foi tratado, pode parar por aqui!"
+                return True
+        
+        # Para todos os outros eventos, nós os deixamos passar normalmente.
+        return super().eventFilter(source, event)
+
     def carregar_listas_de_apoio(self):
         global access_token
+        # ... (seu código aqui continua exatamente igual)
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             url_forn = "http://127.0.0.1:5000/api/fornecedores"
@@ -93,6 +124,7 @@ class FormularioProdutoDialog(QDialog):
 
     def carregar_dados_produto(self):
         global access_token
+        # ... (seu código aqui continua exatamente igual)
         url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
@@ -125,41 +157,73 @@ class FormularioProdutoDialog(QDialog):
             self.close()
 
     def accept(self):
+        # ... (seu código aqui continua exatamente igual)
+        nome = self.input_nome.text().strip()
+        codigo = self.input_codigo.text().strip()
+        preco = self.input_preco.text().strip()
+
+        if not nome or not codigo or not preco:
+            QMessageBox.warning(self, "Campos Obrigatórios", "Por favor, preencha todos os campos: Código, Nome e Preço.")
+            return # Impede a continuação do método
+        
+        # O resto do seu método accept... (omitido para brevidade)
+        # Cole o resto do seu método accept original aqui.
         global access_token
         headers = {'Authorization': f'Bearer {access_token}'}
+        
+        # Aqui você precisa ter a lógica de salvar o produto que já tínhamos feito
+        # (a que envia os IDs de fornecedores/naturezas de forma otimizada)
+        # Vou colocar a versão mais recente que fizemos:
         dados_produto = {
             "codigo": self.input_codigo.text(), "nome": self.input_nome.text(),
             "descricao": self.input_descricao.text(), "preco": self.input_preco.text().replace(',', '.'),
             "codigoB": self.input_codigoB.text(), "codigoC": self.input_codigoC.text()
         }
         
-        produto_salvo_id = None
-        try:
-            if self.produto_id is None: # Modo Adicionar
-                response = requests.post("http://127.0.0.1:5000/api/produtos", headers=headers, json=dados_produto)
-                if response.status_code == 201:
-                    produto_salvo_id = response.json().get('id_produto_criado')
-                else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
-            else: # Modo Editar
-                response = requests.put(f"http://127.0.0.1:5000/api/produtos/{self.produto_id}", headers=headers, json=dados_produto)
-                if response.status_code == 200:
-                    produto_salvo_id = self.produto_id
-                else: raise Exception(response.json().get('erro', 'Erro desconhecido'))
+        ids_fornecedores_selecionados = [
+            self.lista_fornecedores.item(i).data(Qt.UserRole) 
+            for i in range(self.lista_fornecedores.count()) 
+            if self.lista_fornecedores.item(i).isSelected()
+        ]
+        
+        ids_naturezas_selecionadas = [
+            self.lista_naturezas.item(i).data(Qt.UserRole)
+            for i in range(self.lista_naturezas.count())
+            if self.lista_naturezas.item(i).isSelected()
+        ]
 
-            if produto_salvo_id:
-                # TODO: No modo de edição, primeiro limpar as associações antigas
-                for item in self.lista_fornecedores.selectedItems():
-                    url = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}/fornecedores"
-                    requests.post(url, headers=headers, json={'id_fornecedor': item.data(Qt.UserRole)})
+        try:
+            if self.produto_id is None:
+                url_produto = "http://127.0.0.1:5000/api/produtos"
+                response_produto = requests.post(url_produto, headers=headers, json=dados_produto)
                 
-                for item in self.lista_naturezas.selectedItems():
-                    url = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}/naturezas"
-                    requests.post(url, headers=headers, json={'id_natureza': item.data(Qt.UserRole)})
-            
+                if response_produto.status_code != 201:
+                    raise Exception(response_produto.json().get('erro', 'Erro ao criar produto'))
+                
+                produto_salvo_id = response_produto.json().get('id_produto_criado')
+                dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
+                dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
+                
+                url_update = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}"
+                response_update = requests.put(url_update, headers=headers, json=dados_produto)
+
+                if response_update.status_code != 200:
+                    raise Exception(response_update.json().get('erro', 'Produto criado, mas falha ao salvar associações'))
+            else:
+                dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
+                dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
+                
+                url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
+                response = requests.put(url, headers=headers, json=dados_produto)
+
+                if response.status_code != 200:
+                    raise Exception(response.json().get('erro', 'Erro ao atualizar produto'))
+
             QMessageBox.information(self, "Sucesso", "Produto salvo com sucesso!")
             super().accept()
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
+            
 
 class FormularioFornecedorDialog(QDialog):
     """Janela de formulário para Adicionar ou Editar um Fornecedor."""
