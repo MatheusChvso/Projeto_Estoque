@@ -213,7 +213,6 @@ def produto_por_id_endpoint(id_produto):
         produto = Produto.query.get_or_404(id_produto)
 
         if request.method == 'GET':
-            # ... (a sua lógica GET continua igual)
             produto_json = {
                 'id': produto.id_produto,
                 'nome': produto.nome,
@@ -222,33 +221,45 @@ def produto_por_id_endpoint(id_produto):
                 'preco': str(produto.preco),
                 'codigoB': produto.codigoB,
                 'codigoC': produto.codigoC,
-                'fornecedores': [{'id': f.id_fornecedor} for f in produto.fornecedores],
-                'naturezas': [{'id': n.id_natureza} for n in produto.naturezas]
+                'fornecedores': [{'id': f.id_fornecedor, 'nome': f.nome} for f in produto.fornecedores],
+                'naturezas': [{'id': n.id_natureza, 'nome': n.nome} for n in produto.naturezas]
             }
             return jsonify(produto_json), 200
         
         elif request.method == 'PUT':
-            # ... (a sua lógica PUT continua igual)
             dados = request.get_json()
+            
+            # Atualiza os campos diretos do produto
             produto.nome = dados['nome']
             produto.codigo = dados['codigo']
             produto.descricao = dados.get('descricao')
             produto.preco = dados['preco']
             produto.codigoB = dados.get('codigoB')
             produto.codigoC = dados.get('codigoC')
+
+            # --- LÓGICA DE SINCRONIZAÇÃO DE ASSOCIAÇÕES ---
+            if 'fornecedores_ids' in dados:
+                produto.fornecedores.clear() # Limpa as associações antigas
+                ids_fornecedores = dados['fornecedores_ids']
+                if ids_fornecedores:
+                    novos_fornecedores = Fornecedor.query.filter(Fornecedor.id_fornecedor.in_(ids_fornecedores)).all()
+                    produto.fornecedores = novos_fornecedores # Adiciona as novas
+
+            if 'naturezas_ids' in dados:
+                produto.naturezas.clear() # Limpa as associações antigas
+                ids_naturezas = dados['naturezas_ids']
+                if ids_naturezas:
+                    novas_naturezas = Natureza.query.filter(Natureza.id_natureza.in_(ids_naturezas)).all()
+                    produto.naturezas = novas_naturezas # Adiciona as novas
+
             db.session.commit()
             return jsonify({'mensagem': 'Produto atualizado com sucesso!'}), 200
         
         elif request.method == 'DELETE':
-            # --- NOVA VERIFICAÇÃO DE NEGÓCIO ---
-            # Antes de tentar apagar, verifica se existe alguma movimentação para este produto.
             movimentacao_existente = MovimentacaoEstoque.query.filter_by(id_produto=id_produto).first()
-            
             if movimentacao_existente:
-                # Se existir, retorna um erro amigável em vez de deixar o banco de dados falhar.
-                return jsonify({'erro': 'Este produto não pode ser excluído, pois possui um histórico de movimentações no estoque.'}), 400 # 400 = Bad Request
+                return jsonify({'erro': 'Este produto não pode ser excluído, pois possui um histórico de movimentações no estoque.'}), 400
 
-            # Se a verificação passar, o resto do código é executado
             db.session.delete(produto)
             db.session.commit()
             return jsonify({'mensagem': 'Produto excluído com sucesso!'}), 200

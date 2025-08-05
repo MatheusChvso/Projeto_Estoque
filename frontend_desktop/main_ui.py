@@ -102,6 +102,9 @@ class FormularioProdutoDialog(QDialog):
         return super().eventFilter(source, event)
 
     def carregar_listas_de_apoio(self):
+        self.lista_fornecedores.clear()
+        self.lista_naturezas.clear()
+        
         global access_token
         # ... (seu código aqui continua exatamente igual)
         headers = {'Authorization': f'Bearer {access_token}'}
@@ -159,29 +162,29 @@ class FormularioProdutoDialog(QDialog):
             self.close()
 
     def accept(self):
-        # ... (seu código aqui continua exatamente igual)
+        """
+        Coleta todos os dados, incluindo as listas de IDs das associações,
+        e envia tudo em um único pedido para a API.
+        """
+        # Validação dos campos obrigatórios
         nome = self.input_nome.text().strip()
         codigo = self.input_codigo.text().strip()
         preco = self.input_preco.text().strip()
-
         if not nome or not codigo or not preco:
             QMessageBox.warning(self, "Campos Obrigatórios", "Por favor, preencha todos os campos: Código, Nome e Preço.")
-            return # Impede a continuação do método
-        
-        # O resto do seu método accept... (omitido para brevidade)
-        # Cole o resto do seu método accept original aqui.
+            return
+    
         global access_token
         headers = {'Authorization': f'Bearer {access_token}'}
         
-        # Aqui você precisa ter a lógica de salvar o produto que já tínhamos feito
-        # (a que envia os IDs de fornecedores/naturezas de forma otimizada)
-        # Vou colocar a versão mais recente que fizemos:
+        # 1. Coleta os dados básicos do produto
         dados_produto = {
-            "codigo": self.input_codigo.text(), "nome": self.input_nome.text(),
-            "descricao": self.input_descricao.text(), "preco": self.input_preco.text().replace(',', '.'),
+            "codigo": codigo, "nome": nome, "preco": preco.replace(',', '.'),
+            "descricao": self.input_descricao.text(),
             "codigoB": self.input_codigoB.text(), "codigoC": self.input_codigoC.text()
         }
-        
+    
+        # 2. Coleta os IDs dos fornecedores e naturezas selecionados
         ids_fornecedores_selecionados = [
             self.lista_fornecedores.item(i).data(Qt.UserRole) 
             for i in range(self.lista_fornecedores.count()) 
@@ -193,36 +196,39 @@ class FormularioProdutoDialog(QDialog):
             for i in range(self.lista_naturezas.count())
             if self.lista_naturezas.item(i).isSelected()
         ]
-
+    
         try:
-            if self.produto_id is None:
+            if self.produto_id is None: # --- MODO ADICIONAR ---
+                # Primeiro cria o produto com POST
                 url_produto = "http://127.0.0.1:5000/api/produtos"
                 response_produto = requests.post(url_produto, headers=headers, json=dados_produto)
-                
                 if response_produto.status_code != 201:
                     raise Exception(response_produto.json().get('erro', 'Erro ao criar produto'))
                 
+                # Depois, faz um PUT para adicionar as associações ao produto recém-criado
                 produto_salvo_id = response_produto.json().get('id_produto_criado')
                 dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
                 dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
-                
                 url_update = f"http://127.0.0.1:5000/api/produtos/{produto_salvo_id}"
                 response_update = requests.put(url_update, headers=headers, json=dados_produto)
-
+    
                 if response_update.status_code != 200:
                     raise Exception(response_update.json().get('erro', 'Produto criado, mas falha ao salvar associações'))
-            else:
+    
+            else: # --- MODO EDITAR ---
+                # Envia tudo de uma vez, incluindo as listas de IDs
                 dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
                 dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
                 
                 url = f"http://127.0.0.1:5000/api/produtos/{self.produto_id}"
                 response = requests.put(url, headers=headers, json=dados_produto)
-
+    
                 if response.status_code != 200:
                     raise Exception(response.json().get('erro', 'Erro ao atualizar produto'))
-
+    
             QMessageBox.information(self, "Sucesso", "Produto salvo com sucesso!")
             super().accept()
+    
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
             
@@ -487,6 +493,7 @@ class ProdutosWidget(QWidget):
 
     def abrir_formulario_adicionar(self):
         dialog = FormularioProdutoDialog(self)
+        dialog.carregar_listas_de_apoio()
         if dialog.exec():
             self.carregar_produtos()
 
@@ -498,6 +505,7 @@ class ProdutosWidget(QWidget):
         item = self.tabela_produtos.item(linha_selecionada, 0)
         produto_id = item.data(Qt.UserRole)
         dialog = FormularioProdutoDialog(self, produto_id=produto_id)
+        dialog.carregar_listas_de_apoio()
         if dialog.exec():
             self.carregar_produtos()
 
