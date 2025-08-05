@@ -185,3 +185,54 @@ QDialogButtonBox QPushButton {
     font-weight: bold;
     min-width: 80px;
 }
+
+/* ============================================= */
+/* ESTILOS ESPECÍFICOS PARA O NOVO DASHBOARD     */
+/* ============================================= */
+
+/* Títulos das seções do dashboard */
+QLabel#dashboardTitle {
+    font-size: 18px;
+    font-weight: bold;
+    color: #f0f0f0;
+    margin-bottom: 10px;
+    margin-top: 15px;
+}
+
+/* Logo no dashboard */
+QLabel#dashboardLogo {
+    margin-bottom: 20px;
+}
+
+/* Botões de atalho grandes e bonitos */
+QPushButton#btnDashboardEntrada, QPushButton#btnDashboardSaida {
+    font-size: 20px;
+    font-weight: bold;
+    color: white;
+    padding: 20px;
+    border-radius: 8px;
+    min-height: 120px;
+    text-align: center;
+}
+
+QPushButton#btnDashboardEntrada {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #28a745, stop: 1 #218838);
+}
+QPushButton#btnDashboardEntrada:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #2ebf4f, stop: 1 #259d41);
+}
+
+QPushButton#btnDashboardSaida {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #dc3545, stop: 1 #c82333);
+}
+QPushButton#btnDashboardSaida:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #e44d5a, stop: 1 #d32d3e);
+}
+
+/* "Cartão" para a lista de alertas */
+QFrame#frameAlertas {
+    background-color: #3c3c3c;
+    border: 1px solid #4a4a4a;
+    border-radius: 8px;
+    margin-top: 15px;
+}

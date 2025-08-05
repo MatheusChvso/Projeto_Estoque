@@ -15,7 +15,7 @@ from PySide6.QtGui import QPixmap, QAction, QDoubleValidator
 from PySide6.QtCore import Qt, QTimer, Signal, QDate
 from PySide6.QtWidgets import (
     # ... todos os seus imports existentes
-    QComboBox, QFileDialog
+    QComboBox, QFileDialog, QFrame
 )
 from PySide6.QtWidgets import QDateEdit, QCalendarWidget, QMenu
 from PySide6.QtCore import Qt, QTimer, Signal, QDate, QEvent
@@ -1804,66 +1804,71 @@ class KPICardWidget(QWidget):
         """Atualiza o valor exibido no cartão."""
         self.label_valor.setText(str(novo_valor))
 
+# Em main_ui.py, substitua sua DashboardWidget por esta versão limpa:
+
 class DashboardWidget(QWidget):
-    """Tela principal do dashboard com KPIs, atalhos e alertas."""
-    # Sinais para comunicar com a JanelaPrincipal e pedir para mudar de tela
+    """Tela principal do dashboard com KPIs e atalhos."""
     ir_para_entrada_rapida = Signal()
     ir_para_saida_rapida = Signal()
 
     def __init__(self):
         super().__init__()
-        self.layout = QVBoxLayout(self)
+        self.layout = QHBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.layout.setSpacing(20)
 
-        # --- Título ---
-        titulo = QLabel("Dashboard Principal")
-        titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
-        self.layout.addWidget(titulo)
+        # --- COLUNA DA ESQUERDA (KPIs e Logo) ---
+        coluna_esquerda = QVBoxLayout()
+        coluna_esquerda.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # --- Seção de KPIs ---
-        layout_kpis = QHBoxLayout()
+        # Logo
+        self.label_logo = QLabel()
+        logo_pixmap = QPixmap("logo.png")
+        logo_redimensionada = logo_pixmap.scaled(250, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.label_logo.setPixmap(logo_redimensionada)
+        self.label_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label_logo.setObjectName("dashboardLogo")
+        coluna_esquerda.addWidget(self.label_logo)
+        
+        # KPIs
         self.card_produtos = KPICardWidget("Produtos Cadastrados", cor_fundo="#0078d7")
         self.card_fornecedores = KPICardWidget("Fornecedores", cor_fundo="#5c2d91")
         self.card_valor_estoque = KPICardWidget("Valor do Estoque (R$)", cor_fundo="#00b294")
-        
-        layout_kpis.addWidget(self.card_produtos)
-        layout_kpis.addWidget(self.card_fornecedores)
-        layout_kpis.addWidget(self.card_valor_estoque)
-        self.layout.addLayout(layout_kpis)
+        coluna_esquerda.addWidget(self.card_produtos)
+        coluna_esquerda.addWidget(self.card_fornecedores)
+        coluna_esquerda.addWidget(self.card_valor_estoque)
+        coluna_esquerda.addStretch(1)
 
-        # --- Seção de Atalhos ---
-        layout_atalhos = QHBoxLayout()
-        self.btn_atalho_entrada = QPushButton("➡️ Registrar Entrada")
-        self.btn_atalho_saida = QPushButton("⬅️ Registrar Saída")
-        self.btn_atalho_entrada.setObjectName("btnAtalhoEntrada")
-        self.btn_atalho_saida.setObjectName("btnAtalhoSaida")
-                
-        layout_atalhos.addStretch(1)
+        # --- COLUNA DA DIREITA (Atalhos) ---
+        coluna_direita = QVBoxLayout()
+        coluna_direita.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # Atalhos
+        label_atalhos = QLabel("Ações Rápidas")
+        label_atalhos.setObjectName("dashboardTitle")
+        coluna_direita.addWidget(label_atalhos)
+
+        layout_atalhos = QVBoxLayout() # Mudado para QVBoxLayout para empilhar melhor
+        self.btn_atalho_entrada = QPushButton("➕\n\nRegistrar Entrada")
+        self.btn_atalho_saida = QPushButton("➖\n\nRegistrar Saída")
+        self.btn_atalho_entrada.setObjectName("btnDashboardEntrada")
+        self.btn_atalho_saida.setObjectName("btnDashboardSaida")
         layout_atalhos.addWidget(self.btn_atalho_entrada)
         layout_atalhos.addWidget(self.btn_atalho_saida)
-        layout_atalhos.addStretch(1)
-        self.layout.addLayout(layout_atalhos)
-        
-        # --- Seção de Alertas de Estoque Baixo ---
-        #label_alertas = QLabel("⚠️ Alerta: Produtos com Estoque Baixo")
-        #label_alertas.setStyleSheet("font-size: 18px; font-weight: bold; margin-top: 20px;")
-        #self.layout.addWidget(label_alertas)
-#
-        #self.tabela_alertas = QTableWidget()
-        #self.tabela_alertas.setColumnCount(3)
-        #self.tabela_alertas.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
-        #self.tabela_alertas.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        #self.tabela_alertas.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        #self.layout.addWidget(self.tabela_alertas)
-#
-        ## --- Conexões ---
-        #self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
-        #self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
+        coluna_direita.addLayout(layout_atalhos)
+        coluna_direita.addStretch(1) # Adicionado para empurrar para cima
+
+        # Adicionando as colunas ao layout principal
+        self.layout.addLayout(coluna_esquerda, 1)
+        self.layout.addLayout(coluna_direita, 2)
+
+        # --- Conexões ---
+        self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
+        self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
 
     def carregar_dados_dashboard(self):
-        """Busca todos os dados necessários para o dashboard da API."""
+        """Busca os dados de KPI para o dashboard da API."""
         self.carregar_kpis()
-        #self.carregar_alertas_estoque()
 
     def carregar_kpis(self):
         global access_token
@@ -1878,7 +1883,7 @@ class DashboardWidget(QWidget):
                 valor_formatado = f"{dados.get('valor_total_estoque', 0):.2f}".replace('.', ',')
                 self.card_valor_estoque.set_valor(valor_formatado)
         except requests.exceptions.RequestException:
-            print("Erro ao carregar KPIs do dashboard.") # Não mostra popup para não ser intrusivo
+            print("Erro ao carregar KPIs do dashboard.")
 
     
 # ==============================================================================
