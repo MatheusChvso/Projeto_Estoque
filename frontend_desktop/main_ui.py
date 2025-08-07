@@ -547,7 +547,7 @@ class ImportacaoWidget(QWidget):
         instrucoes = QLabel(
             "<b>Instruções:</b><br>"
             "1. Prepare uma planilha com as seguintes colunas obrigatórias: <b>codigo, nome, preco</b>.<br>"
-            "2. Colunas opcionais: <b>descricao, fornecedores_nomes, naturezas_nomes</b>.<br>"
+            "2. Colunas opcionais: <b>quantidade</b>, <b>descricao</b>, <b>fornecedores_nomes</b>, <b>naturezas_nomes</b>.<br>"
             "3. Para múltiplos fornecedores ou naturezas, separe os nomes por vírgula (ex: 'Fornecedor A, Fornecedor B').<br>"
             "4. Salve a planilha no formato <b>CSV (Valores separados por vírgulas)</b>.<br>"
         )

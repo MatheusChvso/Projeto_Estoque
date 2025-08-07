@@ -211,8 +211,8 @@ def add_novo_produto():
 @jwt_required()
 def importar_produtos_csv():
     """
-    Processa um ficheiro CSV para cadastrar produtos em massa.
-    Deteta automaticamente se o separador é vírgula ou ponto e vírgula.
+    Processa um ficheiro CSV para cadastrar produtos em massa e, opcionalmente,
+    realizar a entrada de estoque inicial para cada um.
     """
     if 'file' not in request.files:
         return jsonify({'erro': 'Nenhum ficheiro enviado.'}), 400
@@ -225,20 +225,14 @@ def importar_produtos_csv():
     erros = []
     
     try:
-        # Lê o conteúdo do ficheiro em memória
         stream_content = file.stream.read().decode("UTF-8")
         stream = io.StringIO(stream_content, newline=None)
-
-        # --- ALTERAÇÃO AQUI: Detetar o delimitador ---
-        # Lemos a primeira linha para ver qual separador ela usa
         header = stream.readline()
-        stream.seek(0) # Voltamos ao início do ficheiro
-        
-        # Se a primeira linha contiver um ';', usamos esse como separador. Senão, usamos a vírgula.
+        stream.seek(0)
         delimiter = ';' if ';' in header else ','
-        
         csv_reader = csv.DictReader(stream, delimiter=delimiter)
-        # --- FIM DA ALTERAÇÃO ---
+
+        id_usuario_logado = get_jwt_identity()
 
         for linha_num, linha in enumerate(csv_reader, start=2):
             try:
@@ -273,12 +267,28 @@ def importar_produtos_csv():
                     novo_produto.naturezas.extend(naturezas_db)
 
                 db.session.add(novo_produto)
+                
+                # --- LÓGICA DA ENTRADA INICIAL DE ESTOQUE ---
+                # Forçamos o SQLAlchemy a enviar o INSERT do produto para o banco,
+                # o que nos dá acesso ao seu ID para a movimentação, sem finalizar a transação.
+                db.session.flush()
+
+                quantidade_inicial_str = linha.get('quantidade', '0').strip()
+                if quantidade_inicial_str and int(quantidade_inicial_str) > 0:
+                    movimentacao_inicial = MovimentacaoEstoque(
+                        id_produto=novo_produto.id_produto, # Usa o ID do produto recém-criado
+                        id_usuario=id_usuario_logado,
+                        quantidade=int(quantidade_inicial_str),
+                        tipo='Entrada',
+                        motivo_saida='Balanço Inicial via Importação'
+                    )
+                    db.session.add(movimentacao_inicial)
+                # --- FIM DA LÓGICA DE ENTRADA ---
+                
                 sucesso_count += 1
 
             except Exception as e_interno:
-                # Captura erros inesperados por linha (ex: nome de coluna errado)
                 erros.append(f"Linha {linha_num}: Erro ao processar - {e_interno}. Verifique os nomes das colunas.")
-                # Para não parar a importação inteira, continuamos para a próxima linha
                 continue
 
         db.session.commit()
