@@ -147,7 +147,10 @@ def get_todos_produtos():
             query = query.filter(
                 or_(
                     Produto.nome.ilike(f"%{termo_busca}%"),
-                    Produto.codigo.ilike(f"%{termo_busca}%")
+                    Produto.codigo.ilike(f"%{termo_busca}%"),
+                    Produto.codigoB.ilike(f"%{termo_busca}%"), # <<< ADICIONE ESTA LINHA
+                    Produto.codigoC.ilike(f"%{termo_busca}%")  # <<< ADICIONE ESTA LINHA
+                    
                 )
             )
 
