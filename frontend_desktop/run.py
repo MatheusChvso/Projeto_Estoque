@@ -1,4 +1,4 @@
-# run.py - VERSÃO FINAL E CORRIGIDA SEM ÍCONE
+# run.py - O nosso lançador de aplicação (Versão Final)
 
 import sys
 import os
@@ -12,16 +12,12 @@ sys.path.insert(0, backend_path)
 
 # --- Imports do Nosso Projeto ---
 from app import app
-from main_ui import JanelaLogin # <<< CORRIGIDO: Não importa mais o QIcon
+from main_ui import JanelaLogin, resource_path # Importamos a função resource_path
 
 # --- Função para Rodar o Servidor ---
-# Em run.py, na função run_server
-
 def run_server():
     """Inicia o servidor Flask usando Waitress em uma porta específica."""
     print("Iniciando servidor Flask em segundo plano...")
-    # DE: serve(app, host='127.0.0.1', port=5000)
-    # PARA:
     serve(app, host='0.0.0.0', port=5000)
 
 # --- Bloco de Execução Principal ---
@@ -34,9 +30,10 @@ if __name__ == "__main__":
     print("Iniciando a interface gráfica...")
     app_qt = QApplication(sys.argv)
     
-    # Aplica o estilo
+    # --- CORREÇÃO AQUI: Usamos resource_path para carregar o estilo ---
     try:
-        with open("style.qss", "r", encoding="utf-8") as f:
+        # Agora o .exe saberá onde encontrar o style.qss
+        with open(resource_path("style.qss"), "r", encoding="utf-8") as f:
             app_qt.setStyleSheet(f.read())
     except FileNotFoundError:
         print("AVISO: Arquivo de estilo (style.qss) não encontrado.")

@@ -15,7 +15,8 @@ from datetime import datetime
 from sqlalchemy import case, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
-
+import csv
+import io
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -203,6 +204,95 @@ def add_novo_produto():
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+
+
+
+@app.route('/api/produtos/importar', methods=['POST'])
+@jwt_required()
+def importar_produtos_csv():
+    """
+    Processa um ficheiro CSV para cadastrar produtos em massa.
+    Deteta automaticamente se o separador é vírgula ou ponto e vírgula.
+    """
+    if 'file' not in request.files:
+        return jsonify({'erro': 'Nenhum ficheiro enviado.'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'erro': 'Nome de ficheiro vazio.'}), 400
+
+    sucesso_count = 0
+    erros = []
+    
+    try:
+        # Lê o conteúdo do ficheiro em memória
+        stream_content = file.stream.read().decode("UTF-8")
+        stream = io.StringIO(stream_content, newline=None)
+
+        # --- ALTERAÇÃO AQUI: Detetar o delimitador ---
+        # Lemos a primeira linha para ver qual separador ela usa
+        header = stream.readline()
+        stream.seek(0) # Voltamos ao início do ficheiro
+        
+        # Se a primeira linha contiver um ';', usamos esse como separador. Senão, usamos a vírgula.
+        delimiter = ';' if ';' in header else ','
+        
+        csv_reader = csv.DictReader(stream, delimiter=delimiter)
+        # --- FIM DA ALTERAÇÃO ---
+
+        for linha_num, linha in enumerate(csv_reader, start=2):
+            try:
+                codigo = linha.get('codigo', '').strip()
+                nome = linha.get('nome', '').strip()
+                preco = linha.get('preco', '').strip()
+
+                if not codigo or not nome or not preco:
+                    erros.append(f"Linha {linha_num}: Campos obrigatórios (codigo, nome, preco) em falta.")
+                    continue
+
+                produto_existente = Produto.query.filter_by(codigo=codigo).first()
+                if produto_existente:
+                    erros.append(f"Linha {linha_num}: Código '{codigo}' já existe no sistema.")
+                    continue
+
+                novo_produto = Produto(
+                    codigo=codigo,
+                    nome=nome,
+                    preco=preco.replace(',', '.'),
+                    descricao=linha.get('descricao', '').strip()
+                )
+
+                fornecedores_nomes = [fn.strip() for fn in linha.get('fornecedores_nomes', '').split(',') if fn.strip()]
+                if fornecedores_nomes:
+                    fornecedores_db = Fornecedor.query.filter(Fornecedor.nome.in_(fornecedores_nomes)).all()
+                    novo_produto.fornecedores.extend(fornecedores_db)
+
+                naturezas_nomes = [nn.strip() for nn in linha.get('naturezas_nomes', '').split(',') if nn.strip()]
+                if naturezas_nomes:
+                    naturezas_db = Natureza.query.filter(Natureza.nome.in_(naturezas_nomes)).all()
+                    novo_produto.naturezas.extend(naturezas_db)
+
+                db.session.add(novo_produto)
+                sucesso_count += 1
+
+            except Exception as e_interno:
+                # Captura erros inesperados por linha (ex: nome de coluna errado)
+                erros.append(f"Linha {linha_num}: Erro ao processar - {e_interno}. Verifique os nomes das colunas.")
+                # Para não parar a importação inteira, continuamos para a próxima linha
+                continue
+
+        db.session.commit()
+        
+        return jsonify({
+            'mensagem': 'Importação concluída!',
+            'produtos_importados': sucesso_count,
+            'erros': erros
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': f'Ocorreu um erro geral ao processar o ficheiro: {str(e)}'}), 500
+
 
 
 @app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT', 'DELETE'])

@@ -5,13 +5,15 @@
 import sys
 import os
 import requests
+import traceback
 
 from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout,
     QMessageBox, QMainWindow, QHBoxLayout, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QSizePolicy, QDialog, QFormLayout,
     QDialogButtonBox, QListWidget, QListWidgetItem, QAbstractItemView,
-    QComboBox, QFileDialog, QFrame, QDateEdit, QCalendarWidget, QMenu
+    QComboBox, QFileDialog, QFrame, QDateEdit, QCalendarWidget, QMenu,
+    QTextEdit
 )
 from PySide6.QtGui import (
     QPixmap, QAction, QDoubleValidator, QKeySequence, QIcon
@@ -524,6 +526,105 @@ class FormularioUsuarioDialog(QDialog):
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
+
+# Em main_ui.py, adicione esta nova classe
+
+class ImportacaoWidget(QWidget):
+    """Tela para importação de produtos em massa a partir de um ficheiro CSV."""
+    # --- ADIÇÃO 1: Definimos o novo sinal que a classe pode emitir ---
+    produtos_importados_sucesso = Signal()
+
+    def __init__(self):
+        super().__init__()
+        # O resto do seu __init__ continua exatamente igual...
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.caminho_ficheiro = None
+
+        titulo = QLabel("Importação de Produtos em Massa")
+        titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
+        
+        instrucoes = QLabel(
+            "<b>Instruções:</b><br>"
+            "1. Prepare uma planilha com as seguintes colunas obrigatórias: <b>codigo, nome, preco</b>.<br>"
+            "2. Colunas opcionais: <b>descricao, fornecedores_nomes, naturezas_nomes</b>.<br>"
+            "3. Para múltiplos fornecedores ou naturezas, separe os nomes por vírgula (ex: 'Fornecedor A, Fornecedor B').<br>"
+            "4. Salve a planilha no formato <b>CSV (Valores separados por vírgulas)</b>.<br>"
+        )
+        instrucoes.setWordWrap(True)
+
+        layout_selecao = QHBoxLayout()
+        self.btn_selecionar = QPushButton("📂 Selecionar Ficheiro CSV...")
+        self.label_ficheiro = QLabel("Nenhum ficheiro selecionado.")
+        layout_selecao.addWidget(self.btn_selecionar)
+        layout_selecao.addWidget(self.label_ficheiro)
+        layout_selecao.addStretch(1)
+
+        self.btn_importar = QPushButton("🚀 Iniciar Importação")
+        self.btn_importar.setObjectName("btnImportar")
+        self.btn_importar.setEnabled(False)
+
+        label_resultados = QLabel("Resultados da Importação:")
+        self.text_resultados = QTextEdit()
+        self.text_resultados.setReadOnly(True)
+
+        self.layout.addWidget(titulo)
+        self.layout.addWidget(instrucoes)
+        self.layout.addLayout(layout_selecao)
+        self.layout.addWidget(self.btn_importar)
+        self.layout.addWidget(label_resultados)
+        self.layout.addWidget(self.text_resultados)
+
+        self.btn_selecionar.clicked.connect(self.selecionar_ficheiro)
+        self.btn_importar.clicked.connect(self.iniciar_importacao)
+
+
+    def selecionar_ficheiro(self):
+        caminho, _ = QFileDialog.getOpenFileName(self, "Selecionar Ficheiro CSV", "", "Ficheiros CSV (*.csv)")
+        if caminho:
+            self.caminho_ficheiro = caminho
+            self.label_ficheiro.setText(os.path.basename(caminho))
+            self.btn_importar.setEnabled(True)
+            self.text_resultados.clear()
+
+    def iniciar_importacao(self):
+        if not self.caminho_ficheiro:
+            return
+
+        self.text_resultados.setText("A importar... Por favor, aguarde.")
+        QApplication.processEvents()
+
+        global access_token
+        url = f"{API_BASE_URL}/api/produtos/importar"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        try:
+            with open(self.caminho_ficheiro, 'rb') as f:
+                files = {'file': (os.path.basename(self.caminho_ficheiro), f, 'text/csv')}
+                response = requests.post(url, headers=headers, files=files)
+
+            if response.status_code == 200:
+                dados = response.json()
+                resultado_texto = f"{dados.get('mensagem', '')}\n"
+                resultado_texto += f"Produtos importados com sucesso: {dados.get('produtos_importados', 0)}\n\n"
+                
+                erros = dados.get('erros', [])
+                if erros:
+                    resultado_texto += "Erros encontrados:\n"
+                    resultado_texto += "\n".join(erros)
+                
+                self.text_resultados.setText(resultado_texto)
+                
+                # --- ADIÇÃO 2: Emitimos o sinal se a importação teve sucesso ---
+                if dados.get('produtos_importados', 0) > 0:
+                    self.produtos_importados_sucesso.emit()
+            else:
+                self.text_resultados.setText(f"Erro na API: {response.text}")
+
+        except Exception as e:
+            self.text_resultados.setText(f"Ocorreu um erro crítico: {e}")
+        
+        self.btn_importar.setEnabled(False)
 
 class ProdutosWidget(QWidget):
     def __init__(self):
@@ -1509,139 +1610,157 @@ class UsuariosWidget(QWidget):
 class JanelaPrincipal(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Sistema de Gestão de Estoque")
-        self.resize(1280, 720)
-    
-        self.dados_usuario = {}
-    
-        self.stacked_widget = QStackedWidget()
-        self.stacked_widget.setObjectName("mainContentArea")
         
-        self.tela_dashboard = DashboardWidget()
-        self.tela_produtos = ProdutosWidget()
-        self.tela_estoque = EstoqueWidget()
-        self.tela_entrada_rapida = EntradaRapidaWidget()
-        self.tela_saida_rapida = SaidaRapidaWidget()
-        self.tela_relatorios = RelatoriosWidget()
-        self.tela_fornecedores = FornecedoresWidget()
-        self.tela_naturezas = NaturezasWidget()
-        self.tela_usuarios = None
-
-        self.stacked_widget.addWidget(self.tela_dashboard)
-        self.stacked_widget.addWidget(self.tela_produtos)
-        self.stacked_widget.addWidget(self.tela_estoque)
-        self.stacked_widget.addWidget(self.tela_entrada_rapida)
-        self.stacked_widget.addWidget(self.tela_saida_rapida)
-        self.stacked_widget.addWidget(self.tela_relatorios)
-        self.stacked_widget.addWidget(self.tela_fornecedores)
-        self.stacked_widget.addWidget(self.tela_naturezas)
-    
-        menu_bar = self.menuBar()
-        self.menu_cadastros = menu_bar.addMenu("&Cadastros")
+        # --- BLOCO DE DEPURAÇÃO PARA APANHAR ERROS SILENCIOSOS ---
+        try:
+            self.setWindowTitle("Sistema de Gestão de Estoque")
+            self.resize(1280, 720)
         
-        menu_arquivo = menu_bar.addMenu("&Arquivo")
-        acao_dashboard = QAction("Dashboard", self)
-        acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
-        menu_arquivo.addAction(acao_dashboard)
-        menu_arquivo.addSeparator()
-        acao_sair = QAction("Sair", self)
-        acao_sair.setShortcut(QKeySequence.Quit)
-        acao_sair.triggered.connect(self.close)
-        menu_arquivo.addAction(acao_sair)
-
-        self.acao_produtos = QAction("Produtos...", self)
-        self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
-        self.menu_cadastros.addAction(self.acao_produtos)
+            self.dados_usuario = {}
         
-        self.acao_fornecedores = QAction("Fornecedores...", self)
-        self.acao_fornecedores.triggered.connect(self.mostrar_tela_fornecedores)
-        self.menu_cadastros.addAction(self.acao_fornecedores)
+            # --- ÁREA DE CONTEÚDO ---
+            self.stacked_widget = QStackedWidget()
+            self.stacked_widget.setObjectName("mainContentArea")
+            
+            self.tela_dashboard = DashboardWidget()
+            self.tela_produtos = ProdutosWidget()
+            self.tela_estoque = EstoqueWidget()
+            self.tela_entrada_rapida = EntradaRapidaWidget()
+            self.tela_saida_rapida = SaidaRapidaWidget()
+            self.tela_relatorios = RelatoriosWidget()
+            self.tela_fornecedores = FornecedoresWidget()
+            self.tela_naturezas = NaturezasWidget()
+            self.tela_usuarios = None
+            self.tela_importacao = ImportacaoWidget()
+
+            self.stacked_widget.addWidget(self.tela_dashboard)
+            self.stacked_widget.addWidget(self.tela_produtos)
+            self.stacked_widget.addWidget(self.tela_estoque)
+            self.stacked_widget.addWidget(self.tela_entrada_rapida)
+            self.stacked_widget.addWidget(self.tela_saida_rapida)
+            self.stacked_widget.addWidget(self.tela_relatorios)
+            self.stacked_widget.addWidget(self.tela_fornecedores)
+            self.stacked_widget.addWidget(self.tela_naturezas)
+            self.stacked_widget.addWidget(self.tela_importacao)
         
-        self.acao_naturezas = QAction("Naturezas...", self)
-        self.acao_naturezas.triggered.connect(self.mostrar_tela_naturezas)
-        self.menu_cadastros.addAction(self.acao_naturezas)
-        
-        self.menu_cadastros.addSeparator()
-        self.acao_usuarios = QAction("Usuários...", self)
-        self.acao_usuarios.triggered.connect(self.mostrar_tela_usuarios)
+            # --- BARRA DE MENUS ---
+            menu_bar = self.menuBar()
+            
+            menu_arquivo = menu_bar.addMenu("&Arquivo")
+            acao_dashboard = QAction("Dashboard", self)
+            acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
+            menu_arquivo.addAction(acao_dashboard)
+            menu_arquivo.addSeparator()
+            acao_sair = QAction("Sair", self)
+            acao_sair.setShortcut(QKeySequence.Quit)
+            acao_sair.triggered.connect(self.close)
+            menu_arquivo.addAction(acao_sair)
 
-        menu_operacoes = menu_bar.addMenu("&Operações")
-        acao_entrada = QAction("Entrada Rápida de Estoque...", self)
-        acao_entrada.triggered.connect(self.mostrar_tela_entrada_rapida)
-        menu_operacoes.addAction(acao_entrada)
-        
-        acao_saida = QAction("Saída Rápida de Estoque...", self)
-        acao_saida.triggered.connect(self.mostrar_tela_saida_rapida)
-        menu_operacoes.addAction(acao_saida)
-        
-        menu_operacoes.addSeparator()
-        acao_saldos = QAction("Consultar Saldos...", self)
-        acao_saldos.triggered.connect(self.mostrar_tela_estoque)
-        menu_operacoes.addAction(acao_saldos)
-        
-        acao_historico = QAction("Ver Histórico de Movimentações...", self)
-        acao_historico.triggered.connect(lambda: (self.mostrar_tela_estoque(), self.tela_estoque.mostrar_historico()))
-        menu_operacoes.addAction(acao_historico)
+            self.menu_cadastros = menu_bar.addMenu("&Cadastros")
+            self.acao_produtos = QAction("Produtos...", self)
+            self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
+            self.menu_cadastros.addAction(self.acao_produtos)
+            self.acao_fornecedores = QAction("Fornecedores...", self)
+            self.acao_fornecedores.triggered.connect(self.mostrar_tela_fornecedores)
+            self.menu_cadastros.addAction(self.acao_fornecedores)
+            self.acao_naturezas = QAction("Naturezas...", self)
+            self.acao_naturezas.triggered.connect(self.mostrar_tela_naturezas)
+            self.menu_cadastros.addAction(self.acao_naturezas)
+            self.menu_cadastros.addSeparator()
+            acao_importar = QAction("Importar Produtos de CSV...", self)
+            acao_importar.triggered.connect(self.mostrar_tela_importacao)
+            self.menu_cadastros.addAction(acao_importar)
+            self.menu_cadastros.addSeparator()
+            self.acao_usuarios = QAction("Usuários...", self)
+            self.acao_usuarios.triggered.connect(self.mostrar_tela_usuarios)
 
-        menu_relatorios = menu_bar.addMenu("&Relatórios")
-        acao_gerar_relatorio = QAction("Gerar Relatório...", self)
-        acao_gerar_relatorio.triggered.connect(self.mostrar_tela_relatorios)
-        menu_relatorios.addAction(acao_gerar_relatorio)
+            menu_operacoes = menu_bar.addMenu("&Operações")
+            acao_entrada = QAction("Entrada Rápida de Estoque...", self)
+            acao_entrada.triggered.connect(self.mostrar_tela_entrada_rapida)
+            menu_operacoes.addAction(acao_entrada)
+            acao_saida = QAction("Saída Rápida de Estoque...", self)
+            acao_saida.triggered.connect(self.mostrar_tela_saida_rapida)
+            menu_operacoes.addAction(acao_saida)
+            menu_operacoes.addSeparator()
+            acao_saldos = QAction("Consultar Saldos...", self)
+            acao_saldos.triggered.connect(self.mostrar_tela_estoque)
+            menu_operacoes.addAction(acao_saldos)
+            acao_historico = QAction("Ver Histórico de Movimentações...", self)
+            acao_historico.triggered.connect(lambda: (self.mostrar_tela_estoque(), self.tela_estoque.mostrar_historico()))
+            menu_operacoes.addAction(acao_historico)
 
-        menu_ajuda = menu_bar.addMenu("&Ajuda")
-        acao_sobre = QAction("Sobre...", self)
-        acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
-        menu_ajuda.addAction(acao_sobre)
+            menu_relatorios = menu_bar.addMenu("&Relatórios")
+            acao_gerar_relatorio = QAction("Gerar Relatório...", self)
+            acao_gerar_relatorio.triggered.connect(self.mostrar_tela_relatorios)
+            menu_relatorios.addAction(acao_gerar_relatorio)
 
-        widget_central = QWidget()
-        self.setCentralWidget(widget_central)
-        layout_principal = QHBoxLayout(widget_central)
+            menu_ajuda = menu_bar.addMenu("&Ajuda")
+            acao_sobre = QAction("Sobre...", self)
+            acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
+            menu_ajuda.addAction(acao_sobre)
 
-        painel_lateral = QWidget()
-        painel_lateral.setObjectName("painelLateral")
-        painel_lateral.setFixedWidth(220)
-        self.layout_painel_lateral = QVBoxLayout(painel_lateral)
-        self.layout_painel_lateral.setAlignment(Qt.AlignTop)
+            # --- LAYOUT GERAL ---
+            widget_central = QWidget()
+            self.setCentralWidget(widget_central)
+            layout_principal = QHBoxLayout(widget_central)
 
-        self.btn_dashboard = QPushButton("🏠 Dashboard")
-        self.btn_produtos = QPushButton("📦 Produtos")
-        self.btn_estoque = QPushButton("📊 Estoque")
-        self.btn_entrada_rapida = QPushButton("➡️ Entrada Rápida")
-        self.btn_saida_rapida = QPushButton("⬅️ Saída Rápida")
-        self.btn_relatorios = QPushButton("📄 Relatórios")
-        self.btn_fornecedores = QPushButton("🚚 Fornecedores")
-        self.btn_naturezas = QPushButton("🌿 Naturezas")
-        self.btn_usuarios = QPushButton("👥 Usuários")
+            # --- PAINEL LATERAL ---
+            painel_lateral = QWidget()
+            painel_lateral.setObjectName("painelLateral")
+            painel_lateral.setFixedWidth(220)
+            self.layout_painel_lateral = QVBoxLayout(painel_lateral)
+            self.layout_painel_lateral.setAlignment(Qt.AlignTop)
 
-        self.layout_painel_lateral.addWidget(self.btn_dashboard)
-        self.layout_painel_lateral.addWidget(self.btn_produtos)
-        self.layout_painel_lateral.addWidget(self.btn_estoque)
-        self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
-        self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
-        self.layout_painel_lateral.addWidget(self.btn_relatorios)
-        self.layout_painel_lateral.addWidget(self.btn_fornecedores)
-        self.layout_painel_lateral.addWidget(self.btn_naturezas)
-        
-        self.layout_painel_lateral.addStretch(1)
-        layout_principal.addWidget(painel_lateral)
-        layout_principal.addWidget(self.stacked_widget)
+            self.btn_dashboard = QPushButton("🏠 Dashboard")
+            self.btn_produtos = QPushButton("📦 Produtos")
+            self.btn_estoque = QPushButton("📊 Estoque")
+            self.btn_entrada_rapida = QPushButton("➡️ Entrada Rápida")
+            self.btn_saida_rapida = QPushButton("⬅️ Saída Rápida")
+            self.btn_relatorios = QPushButton("📄 Relatórios")
+            self.btn_fornecedores = QPushButton("🚚 Fornecedores")
+            self.btn_naturezas = QPushButton("🌿 Naturezas")
+            self.btn_usuarios = QPushButton("👥 Usuários")
 
-        self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
-        self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
-        self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
-        self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
-        self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
-        self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
-        self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
-        self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
-        
-        self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
-        self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
-        self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
-        self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
+            self.layout_painel_lateral.addWidget(self.btn_dashboard)
+            self.layout_painel_lateral.addWidget(self.btn_produtos)
+            self.layout_painel_lateral.addWidget(self.btn_estoque)
+            self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
+            self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
+            self.layout_painel_lateral.addWidget(self.btn_relatorios)
+            self.layout_painel_lateral.addWidget(self.btn_fornecedores)
+            self.layout_painel_lateral.addWidget(self.btn_naturezas)
+            
+            self.layout_painel_lateral.addStretch(1)
+            layout_principal.addWidget(painel_lateral)
+            layout_principal.addWidget(self.stacked_widget)
 
-        self.statusBar().showMessage("Pronto.")
+            # --- CONEXÕES ---
+            self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
+            self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
+            self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
+            self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
+            self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
+            self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
+            self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
+            self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
+            
+            self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
+            self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
+            self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
+            self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
+            self.tela_importacao.produtos_importados_sucesso.connect(self.tela_produtos.carregar_produtos)
 
+            self.statusBar().showMessage("Pronto.")
+
+        except Exception as e:
+            import traceback
+            error_text = f"Ocorreu um erro crítico ao iniciar a janela principal:\n\n{e}\n\n{traceback.format_exc()}"
+            QMessageBox.critical(self, "Erro de Inicialização", error_text)
+            # Fecha a aplicação se a janela principal não puder ser criada
+            sys.exit(1)
+
+    # O resto da sua classe JanelaPrincipal continua aqui...
+    # (carregar_dados_usuario, mostrar_tela_*, etc.)
     def carregar_dados_usuario(self, dados_usuario):
         self.dados_usuario = dados_usuario
         
@@ -1702,6 +1821,10 @@ class JanelaPrincipal(QMainWindow):
             <p>Agradecimentos especiais pela colaboração e testes.</p>
             """
         )
+    
+    def mostrar_tela_importacao(self):
+        """Mostra a tela de importação de produtos."""
+        self.stacked_widget.setCurrentWidget(self.tela_importacao)
 
 class KPICardWidget(QWidget):
     def __init__(self, titulo, valor_inicial="0", cor_fundo="#0078d7"):
