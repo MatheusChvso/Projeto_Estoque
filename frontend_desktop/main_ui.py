@@ -1613,6 +1613,7 @@ class JanelaPrincipal(QMainWindow):
         
         # --- BLOCO DE DEPURAÇÃO PARA APANHAR ERROS SILENCIOSOS ---
         try:
+            self.setWindowIcon(QIcon(resource_path("icone.ico")))
             self.setWindowTitle("Sistema de Gestão de Estoque")
             self.resize(1280, 720)
         
@@ -1648,6 +1649,7 @@ class JanelaPrincipal(QMainWindow):
             
             menu_arquivo = menu_bar.addMenu("&Arquivo")
             acao_dashboard = QAction("Dashboard", self)
+            acao_dashboard.setShortcut("Ctrl+D")
             acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
             menu_arquivo.addAction(acao_dashboard)
             menu_arquivo.addSeparator()
@@ -1658,9 +1660,11 @@ class JanelaPrincipal(QMainWindow):
 
             self.menu_cadastros = menu_bar.addMenu("&Cadastros")
             self.acao_produtos = QAction("Produtos...", self)
+            self.acao_produtos.setShortcut("Ctrl+P")
             self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
             self.menu_cadastros.addAction(self.acao_produtos)
             self.acao_fornecedores = QAction("Fornecedores...", self)
+            self.acao_fornecedores.setShortcut("Ctrl+F")
             self.acao_fornecedores.triggered.connect(self.mostrar_tela_fornecedores)
             self.menu_cadastros.addAction(self.acao_fornecedores)
             self.acao_naturezas = QAction("Naturezas...", self)
@@ -1676,9 +1680,11 @@ class JanelaPrincipal(QMainWindow):
 
             menu_operacoes = menu_bar.addMenu("&Operações")
             acao_entrada = QAction("Entrada Rápida de Estoque...", self)
+            acao_entrada.setShortcut("Ctrl+E")
             acao_entrada.triggered.connect(self.mostrar_tela_entrada_rapida)
             menu_operacoes.addAction(acao_entrada)
             acao_saida = QAction("Saída Rápida de Estoque...", self)
+            acao_saida.setShortcut("Ctrl+S")
             acao_saida.triggered.connect(self.mostrar_tela_saida_rapida)
             menu_operacoes.addAction(acao_saida)
             menu_operacoes.addSeparator()
@@ -1933,6 +1939,7 @@ class DashboardWidget(QWidget):
 class JanelaLogin(QWidget):
     def __init__(self):
         super().__init__()
+        self.setWindowIcon(QIcon(resource_path("icone.ico")))
         self.setWindowTitle("Meu Sistema de Gestão - Login")
         self.resize(300, 350)
         self.janela_principal = None

@@ -12,6 +12,7 @@ from flask_jwt_extended import (
     JWTManager
 )
 from datetime import datetime
+from datetime import timedelta
 from sqlalchemy import case, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
@@ -641,9 +642,10 @@ def get_todas_movimentacoes():
 
 # --- ROTAS DE LOGIN E USUÁRIOS ---
 
+
 @app.route('/api/login', methods=['POST'])
 def login_endpoint():
-    """Autentica um usuário e retorna um token de acesso."""
+    """Autentica um utilizador e retorna um token de acesso com duração prolongada."""
     try:
         dados = request.get_json()
         if not dados or 'login' not in dados or 'senha' not in dados:
@@ -655,15 +657,20 @@ def login_endpoint():
         usuario = Usuario.query.filter_by(login=login, ativo=True).first()
 
         if usuario and usuario.check_password(senha):
+            # --- A CORREÇÃO ESTÁ AQUI ---
+            # Criamos um token que agora é válido por 8 horas.
             access_token = create_access_token(
                 identity=str(usuario.id_usuario),
-                additional_claims={'permissao': usuario.permissao}
+                additional_claims={'permissao': usuario.permissao},
+                expires_delta=timedelta(hours=8) # Define a duração do token
             )
             return jsonify(access_token=access_token), 200
         else:
             return jsonify({"erro": "Credenciais inválidas"}), 401
+            
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+# ==============================================================================
     
     
     
