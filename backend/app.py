@@ -87,7 +87,7 @@ class MovimentacaoEstoque(db.Model):
     id_movimentacao = db.Column(db.Integer, primary_key=True)
     id_produto = db.Column(db.Integer, db.ForeignKey('produto.Id_produto'), nullable=False)
     id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
-    data_hora = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    data_hora = db.Column(db.DateTime, nullable=False, default=datetime.now)
     quantidade = db.Column(db.Integer, nullable=False)
     tipo = db.Column(db.Enum("Entrada", "Saida"), nullable=False)
     motivo_saida = db.Column(db.String(200))
