@@ -846,29 +846,30 @@ class SaldosWidget(QWidget):
         self.popular_tabela(self.dados_exibidos)
 
 class HistoricoWidget(QWidget):
+    """Sub-tela para visualizar e filtrar o histórico de movimentações."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.dados_completos = []
 
+        # --- Layout de Filtros ---
         layout_filtros = QHBoxLayout()
         self.combo_tipo = QComboBox()
-        self.combo_tipo.addItems(["Todas", "Entradas", "Saídas"])
+        self.combo_tipo.addItems(["Todas", "Entrada", "Saida"]) # Corrigido para "Saida"
         self.combo_tipo.setStyleSheet("font-size: 14px; padding: 5px;")
         
-        self.btn_filtrar = QPushButton("Filtrar")
         self.btn_recarregar = QPushButton("Recarregar Histórico")
         
         layout_filtros.addWidget(QLabel("Filtrar por tipo:"))
         layout_filtros.addWidget(self.combo_tipo)
-        layout_filtros.addWidget(self.btn_filtrar)
         layout_filtros.addStretch(1)
         layout_filtros.addWidget(self.btn_recarregar)
 
+        # --- Tabela de Histórico (com a nova coluna) ---
         self.tabela_historico = QTableWidget()
-        self.tabela_historico.setColumnCount(7)
+        self.tabela_historico.setColumnCount(8) # Aumentado para 8 colunas
         self.tabela_historico.setHorizontalHeaderLabels([
-            "Data/Hora", "Produto (Código)", "Produto (Nome)", "Tipo", "Qtd.", "Usuário", "Motivo da Saída"
+            "Data/Hora", "Cód. Produto", "Nome Produto", "Tipo", "Qtd. Mov.", "Saldo Após", "Usuário", "Motivo da Saída"
         ])
         self.tabela_historico.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_historico.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -877,44 +878,65 @@ class HistoricoWidget(QWidget):
         self.layout.addLayout(layout_filtros)
         self.layout.addWidget(self.tabela_historico)
 
+        # --- Conexões ---
         self.btn_recarregar.clicked.connect(self.carregar_historico)
-        self.btn_filtrar.clicked.connect(self.popular_tabela)
+        # O filtro agora é aplicado diretamente na chamada da API
+        self.combo_tipo.currentIndexChanged.connect(self.carregar_historico)
+
+        # Carga inicial
+        self.carregar_historico()
 
     def carregar_historico(self):
+        """Busca o histórico filtrado da API e o exibe na tabela."""
         global access_token
-        url = f"{API_BASE_URL}/api/movimentacoes"
+        
+        data_fim = QDate.currentDate()
+        data_inicio = data_fim.addDays(-90)
+        
+        params = {
+            'data_inicio': data_inicio.toString("yyyy-MM-dd"),
+            'data_fim': data_fim.toString("yyyy-MM-dd"),
+            'formato': 'json' # <<< ADICIONE ESTA LINHA CRUCIAL
+        }
+        
+        filtro_tipo = self.combo_tipo.currentText()
+        if filtro_tipo != "Todas":
+            params['tipo'] = filtro_tipo
+    
+        url = f"{API_BASE_URL}/api/relatorios/movimentacoes"
         headers = {'Authorization': f'Bearer {access_token}'}
+    
         try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
+            response = requests.get(url, headers=headers, params=params)
+            
+            if response and response.status_code == 200:
                 self.dados_completos = response.json()
-                self.popular_tabela()
+                self.popular_tabela(self.dados_completos)
             else:
-                QMessageBox.warning(self, "Erro", "Não foi possível carregar o histórico.")
+                mensagem = "Não foi possível carregar o histórico."
+                if response:
+                    mensagem += f"\n(Erro: {response.status_code})"
+                QMessageBox.warning(self, "Erro", mensagem)
+    
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
             
-    def popular_tabela(self):
-        filtro = self.combo_tipo.currentText()
-        
-        if filtro == "Todas":
-            dados_filtrados = self.dados_completos
-        elif filtro == "Entradas":
-            dados_filtrados = [mov for mov in self.dados_completos if mov['tipo'] == 'Entrada']
-        else:
-            dados_filtrados = [mov for mov in self.dados_completos if mov['tipo'] == 'Saida']
-
+    def popular_tabela(self, dados):
+        """Preenche a tabela com os dados fornecidos."""
         self.tabela_historico.setRowCount(0)
-        self.tabela_historico.setRowCount(len(dados_filtrados))
+        self.tabela_historico.setRowCount(len(dados))
 
-        for linha, mov in enumerate(dados_filtrados):
+        for linha, mov in enumerate(dados):
             self.tabela_historico.setItem(linha, 0, QTableWidgetItem(mov['data_hora']))
             self.tabela_historico.setItem(linha, 1, QTableWidgetItem(mov['produto_codigo']))
             self.tabela_historico.setItem(linha, 2, QTableWidgetItem(mov['produto_nome']))
             self.tabela_historico.setItem(linha, 3, QTableWidgetItem(mov['tipo']))
             self.tabela_historico.setItem(linha, 4, QTableWidgetItem(str(mov['quantidade'])))
-            self.tabela_historico.setItem(linha, 5, QTableWidgetItem(mov['usuario_nome']))
-            self.tabela_historico.setItem(linha, 6, QTableWidgetItem(mov.get('motivo_saida', '')))
+            # --- CORREÇÃO: Usa a chave 'saldo_apos' ---
+            self.tabela_historico.setItem(linha, 5, QTableWidgetItem(str(mov.get('saldo_apos', ''))))
+            self.tabela_historico.setItem(linha, 6, QTableWidgetItem(mov['usuario_nome']))
+            self.tabela_historico.setItem(linha, 7, QTableWidgetItem(mov.get('motivo_saida', '')))
+
 
 class RelatoriosWidget(QWidget):
     def __init__(self):

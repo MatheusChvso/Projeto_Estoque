@@ -1088,27 +1088,30 @@ def gerar_inventario_pdf(dados):
 def gerar_historico_pdf(dados):
     """Gera um PDF do relatório de histórico de movimentações."""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter)) # Paisagem para mais colunas
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter))
     elementos = []
     styles = getSampleStyleSheet()
 
-    # Título
     titulo = Paragraph("Relatório de Histórico de Movimentações", styles['h1'])
     elementos.append(titulo)
     elementos.append(Spacer(1, 12))
     
-    dados_tabela = [["Data/Hora", "Produto", "Tipo", "Qtd.", "Usuário", "Motivo da Saída"]]
+    # --- ALTERAÇÃO AQUI ---
+    dados_tabela = [["Data/Hora", "Produto", "Tipo", "Qtd.", "Saldo Após", "Usuário", "Motivo"]]
     for item in dados:
         dados_tabela.append([
             item['data_hora'],
             f"{item['produto_codigo']} - {item['produto_nome']}",
             item['tipo'],
             str(item['quantidade']),
+            str(item['saldo_apos']), # <<< NOVA LINHA
             item['usuario_nome'],
             item.get('motivo_saida', '')
         ])
         
-    tabela = Table(dados_tabela, colWidths=[120, 200, 60, 40, 100, 150]) # Larguras customizadas
+    # Ajuste nas larguras das colunas para a nova coluna
+    tabela = Table(dados_tabela, colWidths=[110, 180, 50, 40, 60, 100, 130]) 
+    # ... (o resto da função TableStyle continua igual)
     tabela.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -1122,7 +1125,6 @@ def gerar_historico_pdf(dados):
     doc.build(elementos)
     buffer.seek(0)
     return buffer
-
 
 # --- ENDPOINTS DA API DE RELATÓRIOS ---
 
@@ -1162,47 +1164,78 @@ def relatorio_inventario():
 @app.route('/api/relatorios/movimentacoes', methods=['GET'])
 @jwt_required()
 def relatorio_movimentacoes():
-    """Gera e retorna o relatório de movimentações filtrado."""
-    formato = request.args.get('formato', 'pdf').lower()
+    """
+    Gera e retorna o relatório de movimentações em vários formatos (PDF, XLSX, JSON).
+    """
+    # --- ALTERAÇÃO AQUI: O formato padrão agora é 'json' se não for especificado ---
+    formato = request.args.get('formato', 'json').lower()
     data_inicio_str = request.args.get('data_inicio')
+    # ... (o resto da lógica de busca e cálculo do saldo continua igual) ...
     data_fim_str = request.args.get('data_fim')
     tipo = request.args.get('tipo')
 
-    # Lógica para buscar os dados (a mesma de antes)
     query = MovimentacaoEstoque.query.options(
         joinedload(MovimentacaoEstoque.produto),
         joinedload(MovimentacaoEstoque.usuario)
-    ).order_by(MovimentacaoEstoque.data_hora.desc())
+    ).order_by(MovimentacaoEstoque.id_produto, MovimentacaoEstoque.data_hora)
 
     if data_inicio_str:
         query = query.filter(MovimentacaoEstoque.data_hora >= datetime.strptime(data_inicio_str, '%Y-%m-%d'))
     if data_fim_str:
         data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         query = query.filter(MovimentacaoEstoque.data_hora <= data_fim)
-    if tipo and tipo in ["Entrada", "Saida"]:
-        query = query.filter(MovimentacaoEstoque.tipo == tipo)
-
-    movimentacoes = query.all()
     
-    # --- CORREÇÃO ESTÁ AQUI ---
-    # Montamos os dados do relatório de forma mais segura.
+    todas_movimentacoes = query.all()
+
     dados_relatorio = []
-    for mov in movimentacoes:
+    saldos_atuais = {}
+
+    for mov in todas_movimentacoes:
+        id_produto = mov.id_produto
+        
+        if id_produto not in saldos_atuais:
+            saldo_inicial_query = db.session.query(
+                func.sum(case(
+                    (MovimentacaoEstoque.tipo == 'Entrada', MovimentacaoEstoque.quantidade),
+                    (MovimentacaoEstoque.tipo == 'Saida', -MovimentacaoEstoque.quantidade)
+                ))
+            ).filter(
+                MovimentacaoEstoque.id_produto == id_produto,
+                MovimentacaoEstoque.data_hora < datetime.strptime(data_inicio_str, '%Y-%m-%d') if data_inicio_str else True
+            )
+            saldo_inicial = saldo_inicial_query.scalar() or 0
+            saldos_atuais[id_produto] = saldo_inicial
+
+        if mov.tipo == 'Entrada':
+            saldos_atuais[id_produto] += mov.quantidade
+        else:
+            saldos_atuais[id_produto] -= mov.quantidade
+        
         dados_relatorio.append({
             'data_hora': mov.data_hora.strftime('%d/%m/%Y %H:%M:%S'),
             'produto_codigo': mov.produto.codigo.strip() if mov.produto else 'N/A',
             'produto_nome': mov.produto.nome if mov.produto else 'Produto Excluído',
             'tipo': mov.tipo,
             'quantidade': mov.quantidade,
+            'saldo_apos': saldos_atuais[id_produto],
             'usuario_nome': mov.usuario.nome if mov.usuario else 'Usuário Excluído',
-            'motivo_saida': mov.motivo_saida if mov.motivo_saida else '' # Usando a forma correta
+            'motivo_saida': mov.motivo_saida if mov.motivo_saida else ''
         })
 
-    if formato == 'xlsx':
+    if tipo and tipo in ["Entrada", "Saida"]:
+        dados_relatorio = [linha for linha in dados_relatorio if linha['tipo'] == tipo]
+
+    dados_relatorio.sort(key=lambda x: datetime.strptime(x['data_hora'], '%d/%m/%Y %H:%M:%S'), reverse=True)
+
+    # --- ALTERAÇÃO AQUI: Adicionamos uma nova condição para JSON ---
+    if formato == 'json':
+        return jsonify(dados_relatorio), 200
+    
+    elif formato == 'xlsx':
         df = pd.DataFrame(dados_relatorio)
         df = df.rename(columns={
             'data_hora': 'Data/Hora', 'produto_codigo': 'Cód. Produto', 'produto_nome': 'Nome Produto',
-            'tipo': 'Tipo', 'quantidade': 'Quantidade', 'usuario_nome': 'Usuário', 'motivo_saida': 'Motivo da Saída'
+            'tipo': 'Tipo', 'quantidade': 'Qtd. Mov.', 'saldo_apos': 'Saldo Após', 'usuario_nome': 'Usuário', 'motivo_saida': 'Motivo da Saída'
         })
         buffer = io.BytesIO()
         df.to_excel(buffer, index=False, engine='openpyxl')
@@ -1212,9 +1245,6 @@ def relatorio_movimentacoes():
     else: # PDF
         pdf_buffer = gerar_historico_pdf(dados_relatorio)
         return send_file(pdf_buffer, download_name="relatorio_movimentacoes.pdf", as_attachment=True)
-    
-if __name__ == '__main__':
-    app.run(debug=True)
     
     
 # ==============================================================================
