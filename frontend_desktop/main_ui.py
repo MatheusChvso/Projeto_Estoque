@@ -21,6 +21,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import (
     Qt, QTimer, Signal, QDate, QEvent
 )
+from PySide6.QtCore import QObject
 
 from config import SERVER_IP
 
@@ -29,6 +30,18 @@ from config import SERVER_IP
 # ==============================================================================
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
+
+class SignalHandler(QObject):
+    """Um gestor central para sinais globais da aplicação."""
+    # O sinal de logout que já tínhamos, se aplicável
+    # logout_required = Signal() 
+    
+    # Os novos sinais para atualização de dados
+    fornecedores_atualizados = Signal()
+    naturezas_atualizadas = Signal()
+
+# Cria uma instância única que toda a aplicação vai usar
+signal_handler = SignalHandler()
 
 def resource_path(relative_path):
     """ Retorna o caminho absoluto para o recurso, funcionando tanto no desenvolvimento quanto no .exe do PyInstaller. """
@@ -431,6 +444,10 @@ class QuickAddDialog(QDialog):
             if response.status_code == 201:
                 QMessageBox.information(self, "Sucesso", "Item adicionado com sucesso!")
                 self.item_adicionado.emit()
+                if self.endpoint == "/api/fornecedores":
+                    signal_handler.fornecedores_atualizados.emit()
+                elif self.endpoint == "/api/naturezas":
+                    signal_handler.naturezas_atualizadas.emit()
                 super().accept()
             else:
                 raise Exception(response.json().get('erro', 'Erro desconhecido'))
@@ -1840,6 +1857,8 @@ class JanelaPrincipal(QMainWindow):
             self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
             self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
             self.tela_importacao.produtos_importados_sucesso.connect(self.tela_produtos.carregar_produtos)
+            signal_handler.fornecedores_atualizados.connect(self.tela_fornecedores.carregar_fornecedores)
+            signal_handler.naturezas_atualizadas.connect(self.tela_naturezas.carregar_naturezas)
 
             self.statusBar().showMessage("Pronto.")
 
@@ -1909,10 +1928,10 @@ class JanelaPrincipal(QMainWindow):
         QMessageBox.about(self, 
             "Sobre o Sistema de Gestão de Estoque",
             """
-            <b>Sistema de Gestão de Estoque v1.0</b>
-            <p>Desenvolvido como parte de um projeto de demonstração.</p>
+            <b>Sistema de Gestão de Estoque v1.1</b>
+            <p>Desenvolvido para controle de estoque na Szm.</p>
             <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
-            <p>Agradecimentos especiais pela colaboração e testes.</p>
+            <p>Agradecimentos especiais a Mathias pela colaboração e testes.</p>
             """
         )
     
