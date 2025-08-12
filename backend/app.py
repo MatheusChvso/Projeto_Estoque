@@ -504,16 +504,51 @@ def remover_natureza_do_produto(id_produto, id_natureza):
 # ... (resto do ficheiro)
 # --- ROTAS DE ESTOQUE ---
 
-@app.route('/api/produtos/<int:id_produto>/estoque', methods=['GET'])
+@app.route('/api/estoque/saldos', methods=['GET'])
 @jwt_required()
-def get_saldo_estoque(id_produto):
-    """Calcula e retorna o saldo atual de um produto."""
+def get_saldos_estoque():
+    """
+    Calcula e retorna o saldo de estoque para os produtos,
+    permitindo a busca por nome e códigos.
+    """
     try:
-        # Chama a função auxiliar para evitar código duplicado
-        saldo_calculado = calcular_saldo_produto(id_produto)
-        return jsonify({'id_produto': id_produto, 'saldo_atual': saldo_calculado}), 200
+        termo_busca = request.args.get('search')
+        
+        # Começa a query base de produtos
+        query = Produto.query
+
+        # Aplica o filtro de busca se um termo for fornecido
+        if termo_busca:
+            query = query.filter(
+                or_(
+                    Produto.nome.ilike(f"%{termo_busca}%"),
+                    Produto.codigo.ilike(f"%{termo_busca}%"),
+                    Produto.codigoB.ilike(f"%{termo_busca}%"),
+                    Produto.codigoC.ilike(f"%{termo_busca}%")
+                )
+            )
+
+        produtos_filtrados = query.all()
+        
+        saldos_json = []
+        for produto in produtos_filtrados:
+            saldo_atual = calcular_saldo_produto(produto.id_produto)
+            saldos_json.append({
+                'id_produto': produto.id_produto,
+                'codigo': produto.codigo.strip() if produto.codigo else '',
+                'nome': produto.nome if produto.nome else 'Produto sem nome',
+                'saldo_atual': saldo_atual,
+                # --- NOVOS CAMPOS ADICIONADOS ---
+                'preco': str(produto.preco),
+                'codigoB': produto.codigoB.strip() if produto.codigoB else '',
+                'codigoC': produto.codigoC.strip() if produto.codigoC else ''
+            })
+            
+        return jsonify(saldos_json), 200
+        
     except Exception as e:
-        return jsonify({'erro': str(e)}), 500
+        print(f"!!! ERRO em /api/estoque/saldos: {e}")
+        return jsonify({'erro': 'Ocorreu um erro interno no servidor ao calcular os saldos.'}), 500
 
 @app.route('/api/estoque/entrada', methods=['POST'])
 @jwt_required()

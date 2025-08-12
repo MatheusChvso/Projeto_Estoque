@@ -637,9 +637,9 @@ class ProdutosWidget(QWidget):
         self.btn_adicionar = QPushButton("➕ Adicionar Novo")
         self.btn_editar = QPushButton("✏️ Editar Selecionado")
         self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
-        self.btn_adicionar.setObjectName("btnAdd")
-        self.btn_editar.setObjectName("btnEdit")
-        self.btn_excluir.setObjectName("btnDelete")
+        self.btn_adicionar.setObjectName("btnPositive")
+        self.btn_editar.setObjectName("btnNeutral")
+        self.btn_excluir.setObjectName("btnNegative")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
@@ -753,77 +753,97 @@ class ProdutosWidget(QWidget):
             print(f"Erro de Conexão: {e}")
 
 class SaldosWidget(QWidget):
+    """Tela para visualizar os saldos de estoque, com pesquisa via API e ordenação local."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
-        self.dados_completos = []
-        self.dados_exibidos = []
+        self.dados_exibidos = [] # Guarda os dados atualmente na tabela
 
-        self.titulo = QLabel("Saldos de Estoque")
+        # --- Título ---
+        self.titulo = QLabel("Consulta de Saldos de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
 
+        # --- Layout de Controles ---
         layout_controles = QHBoxLayout()
         
         self.input_pesquisa = QLineEdit()
-        self.input_pesquisa.setPlaceholderText("Buscar por nome ou código do produto...")
-        self.input_pesquisa.setStyleSheet("font-size: 14px; padding: 5px;")
+        self.input_pesquisa.setPlaceholderText("Buscar por Nome ou Códigos (A, B ou C)...")
         
-        self.btn_ordenar_nome = QPushButton("Ordenar A-Z")
-        self.btn_ordenar_codigo = QPushButton("Ordenar por Código")
-        self.btn_recarregar = QPushButton("Recarregar")
+        # --- BOTÕES DE ORDENAÇÃO COM ÍCONES ---
+        self.btn_ordenar_nome = QPushButton("🔤 A-Z")
+        self.btn_ordenar_nome.setToolTip("Ordenar por Nome do Produto")
+        self.btn_ordenar_nome.setObjectName("btnIcon") # Damos um nome para o estilo
+
+        self.btn_ordenar_codigo = QPushButton("🔢 Cód.")
+        self.btn_ordenar_codigo.setToolTip("Ordenar por Código Principal")
+        self.btn_ordenar_codigo.setObjectName("btnIcon")
+
+        self.btn_recarregar = QPushButton("🔄 Recarregar")
+        self.btn_recarregar.setToolTip("Limpar busca e recarregar a lista completa")
 
         layout_controles.addWidget(self.input_pesquisa)
         layout_controles.addWidget(self.btn_ordenar_nome)
         layout_controles.addWidget(self.btn_ordenar_codigo)
         layout_controles.addWidget(self.btn_recarregar)
 
+        # --- Tabela de Estoque (sem alterações) ---
         self.tabela_estoque = QTableWidget()
-        self.tabela_estoque.setColumnCount(3)
-        self.tabela_estoque.setHorizontalHeaderLabels(["Código", "Nome do Produto", "Saldo Atual"])
+        self.tabela_estoque.setColumnCount(6)
+        self.tabela_estoque.setHorizontalHeaderLabels([
+            "Código Principal", "Nome do Produto", "Saldo Atual", "Preço (R$)", "Código B", "Código C"
+        ])
         self.tabela_estoque.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_estoque.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabela_estoque.setAlternatingRowColors(True)
-        self.tabela_estoque.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.tabela_estoque.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        self.tabela_estoque.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header = self.tabela_estoque.horizontalHeader()
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         
+        # --- Adicionando Widgets ao Layout Principal ---
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(layout_controles)
         self.layout.addWidget(self.tabela_estoque)
 
-        self.btn_recarregar.clicked.connect(self.carregar_dados_estoque)
-        self.input_pesquisa.textChanged.connect(self.filtrar_tabela)
+        # --- Temporizador para a busca ---
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self.carregar_dados_estoque)
+
+        # --- Conexões ---
+        self.btn_recarregar.clicked.connect(self.recarregar_lista_completa)
+        self.input_pesquisa.textChanged.connect(self.iniciar_busca_timer)
         self.btn_ordenar_nome.clicked.connect(self.ordenar_por_nome)
         self.btn_ordenar_codigo.clicked.connect(self.ordenar_por_codigo)
 
+        # --- Carga Inicial ---
+        self.carregar_dados_estoque()
+
+    def iniciar_busca_timer(self):
+        self.search_timer.stop()
+        self.search_timer.start(300)
+
+    def recarregar_lista_completa(self):
+        self.input_pesquisa.clear()
         self.carregar_dados_estoque()
 
     def carregar_dados_estoque(self):
         global access_token
+        params = {}
+        termo_busca = self.input_pesquisa.text()
+        if termo_busca:
+            params['search'] = termo_busca
+
         url = f"{API_BASE_URL}/api/estoque/saldos"
         headers = {'Authorization': f'Bearer {access_token}'}
+        
         try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                self.dados_completos = response.json()
-                self.filtrar_tabela()
+            response = requests.get(url, headers=headers, params=params)
+            if response and response.status_code == 200:
+                self.dados_exibidos = response.json() # Guarda os dados recebidos
+                self.popular_tabela(self.dados_exibidos)
             else:
-                QMessageBox.warning(self, "Erro", f"Erro ao carregar saldos: {response.json().get('msg') or response.json().get('erro')}")
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar os saldos.")
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
-
-    def filtrar_tabela(self):
-        termo_busca = self.input_pesquisa.text().lower()
-        
-        if not termo_busca:
-            self.dados_exibidos = self.dados_completos[:]
-        else:
-            self.dados_exibidos = [
-                item for item in self.dados_completos
-                if termo_busca in item['nome'].lower() or termo_busca in item['codigo'].lower()
-            ]
-        
-        self.popular_tabela(self.dados_exibidos)
 
     def popular_tabela(self, dados):
         self.tabela_estoque.setRowCount(0)
@@ -837,11 +857,21 @@ class SaldosWidget(QWidget):
             saldo_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.tabela_estoque.setItem(linha, 2, saldo_item)
 
+            preco_item = QTableWidgetItem(item['preco'])
+            preco_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.tabela_estoque.setItem(linha, 3, preco_item)
+
+            self.tabela_estoque.setItem(linha, 4, QTableWidgetItem(item['codigoB']))
+            self.tabela_estoque.setItem(linha, 5, QTableWidgetItem(item['codigoC']))
+
+    # --- LÓGICA DE ORDENAÇÃO LOCAL ---
     def ordenar_por_nome(self):
+        """Ordena os dados já exibidos por nome e atualiza a tabela."""
         self.dados_exibidos.sort(key=lambda item: item['nome'].lower())
         self.popular_tabela(self.dados_exibidos)
 
     def ordenar_por_codigo(self):
+        """Ordena os dados já exibidos por código e atualiza a tabela."""
         self.dados_exibidos.sort(key=lambda item: item['codigo'])
         self.popular_tabela(self.dados_exibidos)
 
@@ -979,8 +1009,8 @@ class RelatoriosWidget(QWidget):
         layout_botoes = QHBoxLayout()
         self.btn_gerar_pdf = QPushButton("Gerar PDF")
         self.btn_gerar_excel = QPushButton("Gerar Excel (XLSX)")
-        self.btn_gerar_pdf.setObjectName("btnGerarPDF")
-        self.btn_gerar_excel.setObjectName("btnGerarExcel")
+        self.btn_gerar_pdf.setObjectName("btnNegative")
+        self.btn_gerar_excel.setObjectName("btnPositive")
         
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_gerar_pdf)
@@ -1102,9 +1132,9 @@ class FornecedoresWidget(QWidget):
         self.btn_adicionar = QPushButton("➕ Adicionar Novo")
         self.btn_editar = QPushButton("✏️ Editar Selecionado")
         self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
-        self.btn_adicionar.setObjectName("btnAdd")
-        self.btn_editar.setObjectName("btnEdit")
-        self.btn_excluir.setObjectName("btnDelete")
+        self.btn_adicionar.setObjectName("btnPositive")
+        self.btn_editar.setObjectName("btnNeutral")
+        self.btn_excluir.setObjectName("btnNegative")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
@@ -1194,9 +1224,9 @@ class NaturezasWidget(QWidget):
         self.btn_adicionar = QPushButton("➕ Adicionar Nova")
         self.btn_editar = QPushButton("✏️ Editar Selecionada")
         self.btn_excluir = QPushButton("🗑️ Excluir Selecionada")
-        self.btn_adicionar.setObjectName("btnAdd")
-        self.btn_editar.setObjectName("btnEdit")
-        self.btn_excluir.setObjectName("btnDelete")
+        self.btn_adicionar.setObjectName("btnPositive")
+        self.btn_editar.setObjectName("btnNeutral")
+        self.btn_excluir.setObjectName("btnNegative")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_excluir)
@@ -1276,49 +1306,55 @@ class NaturezasWidget(QWidget):
                 QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
 class EntradaRapidaWidget(QWidget):
-    """Tela para registrar entradas de estoque de forma rápida por código de produto."""
+    """Tela para registar entradas de estoque de forma rápida por código de produto."""
     estoque_atualizado = Signal()
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.produto_encontrado_id = None
 
+        # --- 1. CRIAÇÃO DE TODOS OS WIDGETS ---
         self.titulo = QLabel("Entrada Rápida de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
         
+        self.input_codigo = QLineEdit()
+        self.input_codigo.setPlaceholderText("Digite ou leia o código do produto aqui")
+        
+        self.btn_verificar = QPushButton("Verificar Produto")
+        self.btn_verificar.setObjectName("btnNeutral")
+
+        self.label_nome_produto = QLabel("Aguardando verificação...")
+        
+        self.input_quantidade = QLineEdit()
+        self.input_quantidade.setPlaceholderText("0")
+        self.input_quantidade.setValidator(QDoubleValidator(0, 99999, 0))
+        
+        self.btn_registrar = QPushButton("Registar Entrada")
+        self.btn_registrar.setObjectName("btnPositive")
+
+        # --- 2. ORGANIZAÇÃO DO LAYOUT ---
         form_layout = QFormLayout()
         form_layout.setSpacing(15)
 
-        self.input_codigo = QLineEdit()
-        self.input_codigo.setPlaceholderText("Digite ou leia o código do produto aqui")
-        self.btn_verificar = QPushButton("Verificar Produto")
-        self.btn_verificar.setObjectName("btnVerificar")
         layout_codigo = QHBoxLayout()
         layout_codigo.addWidget(self.input_codigo)
         layout_codigo.addWidget(self.btn_verificar)
         form_layout.addRow("Código do Produto:", layout_codigo)
-
-        self.label_nome_produto = QLabel("Aguardando verificação...")
         form_layout.addRow("Produto Encontrado:", self.label_nome_produto)
-
-        self.input_quantidade = QLineEdit()
-        self.input_quantidade.setPlaceholderText("0")
-        self.input_quantidade.setValidator(QDoubleValidator(0, 99999, 0))
         form_layout.addRow("Quantidade a Adicionar:", self.input_quantidade)
-
-        self.btn_registrar = QPushButton("Registar Entrada")
-        self.btn_registrar.setObjectName("btnRegistrarEntrada")
 
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(form_layout)
         self.layout.addWidget(self.btn_registrar, 0, Qt.AlignmentFlag.AlignRight)
         self.layout.addStretch(1)
 
+        # --- 3. CONEXÕES DOS SINAIS ---
         self.btn_verificar.clicked.connect(self.verificar_produto)
         self.input_codigo.returnPressed.connect(self.verificar_produto) 
         self.btn_registrar.clicked.connect(self.registrar_entrada)
         self.input_quantidade.returnPressed.connect(self.btn_registrar.click)
 
+        # --- 4. ESTADO INICIAL ---
         self.resetar_formulario()
 
     def verificar_produto(self):
@@ -1343,17 +1379,14 @@ class EntradaRapidaWidget(QWidget):
                 self.btn_registrar.setEnabled(True)
                 self.input_quantidade.setFocus()
             else:
-                # --- CORREÇÃO AQUI ---
-                # Mostra a mensagem de erro e redefine o estado manualmente.
                 self.label_nome_produto.setText("Produto não encontrado!")
                 self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545;")
                 self.produto_encontrado_id = None
                 self.input_quantidade.clear()
                 self.input_quantidade.setEnabled(False)
                 self.btn_registrar.setEnabled(False)
-                self.input_codigo.selectAll() # Facilita a nova digitação
+                self.input_codigo.selectAll()
                 self.input_codigo.setFocus()
-
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
@@ -1375,11 +1408,11 @@ class EntradaRapidaWidget(QWidget):
             response = requests.post(url, headers=headers, json=dados)
             if response and response.status_code == 201:
                 self.estoque_atualizado.emit()
-                QMessageBox.information(self, "Sucesso", "Entrada de estoque registrada com sucesso!")
+                QMessageBox.information(self, "Sucesso", "Entrada de estoque registada com sucesso!")
                 self.resetar_formulario()
             else:
                 erro = response.json().get('erro', 'Erro desconhecido.')
-                QMessageBox.warning(self, "Erro", f"Não foi possível registrar a entrada: {erro}")
+                QMessageBox.warning(self, "Erro", f"Não foi possível registar a entrada: {erro}")
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
@@ -1394,7 +1427,7 @@ class EntradaRapidaWidget(QWidget):
         self.input_codigo.setFocus()
 
 class SaidaRapidaWidget(QWidget):
-    """Tela para registrar saídas de estoque de forma rápida por código de produto."""
+    """Tela para registar saídas de estoque de forma rápida por código de produto."""
     estoque_atualizado = Signal()
 
     def __init__(self):
@@ -1402,46 +1435,52 @@ class SaidaRapidaWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.produto_encontrado_id = None
 
+        # --- 1. CRIAÇÃO DE TODOS OS WIDGETS ---
         self.titulo = QLabel("Saída Rápida de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
         
-        form_layout = QFormLayout()
-        form_layout.setSpacing(15)
-
         self.input_codigo = QLineEdit()
         self.input_codigo.setPlaceholderText("Digite ou leia o código do produto aqui")
+        
         self.btn_verificar = QPushButton("Verificar Produto")
-        self.btn_verificar.setObjectName("btnVerificar")
+        self.btn_verificar.setObjectName("btnNeutral")
+
+        self.label_nome_produto = QLabel("Aguardando verificação...")
+        
+        self.input_quantidade = QLineEdit()
+        self.input_quantidade.setPlaceholderText("0")
+        self.input_quantidade.setValidator(QDoubleValidator(0, 99999, 0))
+        
+        self.input_motivo = QLineEdit()
+        self.input_motivo.setPlaceholderText("Ex: Venda, Perda, Ajuste de inventário")
+        
+        self.btn_registrar = QPushButton("Registar Saída")
+        self.btn_registrar.setObjectName("btnNegative")
+
+        # --- 2. ORGANIZAÇÃO DO LAYOUT ---
+        form_layout = QFormLayout()
+        form_layout.setSpacing(15)
+        
         layout_codigo = QHBoxLayout()
         layout_codigo.addWidget(self.input_codigo)
         layout_codigo.addWidget(self.btn_verificar)
         form_layout.addRow("Código do Produto:", layout_codigo)
-
-        self.label_nome_produto = QLabel("Aguardando verificação...")
         form_layout.addRow("Produto Encontrado:", self.label_nome_produto)
-
-        self.input_quantidade = QLineEdit()
-        self.input_quantidade.setPlaceholderText("0")
-        self.input_quantidade.setValidator(QDoubleValidator(0, 99999, 0))
         form_layout.addRow("Quantidade a Retirar:", self.input_quantidade)
-
-        self.input_motivo = QLineEdit()
-        self.input_motivo.setPlaceholderText("Ex: Venda, Perda, Ajuste de inventário")
         form_layout.addRow("Motivo da Saída:", self.input_motivo)
-
-        self.btn_registrar = QPushButton("Registar Saída")
-        self.btn_registrar.setObjectName("btnRegistrarSaida")
 
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(form_layout)
         self.layout.addWidget(self.btn_registrar, 0, Qt.AlignmentFlag.AlignRight)
         self.layout.addStretch(1)
 
+        # --- 3. CONEXÕES DOS SINAIS ---
         self.btn_verificar.clicked.connect(self.verificar_produto)
         self.input_codigo.returnPressed.connect(self.verificar_produto)
         self.btn_registrar.clicked.connect(self.registrar_saida)
         self.input_motivo.returnPressed.connect(self.btn_registrar.click)
 
+        # --- 4. ESTADO INICIAL ---
         self.resetar_formulario()
 
     def verificar_produto(self):
@@ -1462,7 +1501,6 @@ class SaidaRapidaWidget(QWidget):
                 self.btn_registrar.setEnabled(True)
                 self.input_quantidade.setFocus()
             else:
-                # --- CORREÇÃO AQUI ---
                 self.label_nome_produto.setText("Produto não encontrado!")
                 self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545;")
                 self.produto_encontrado_id = None
@@ -1473,7 +1511,6 @@ class SaidaRapidaWidget(QWidget):
                 self.btn_registrar.setEnabled(False)
                 self.input_codigo.selectAll()
                 self.input_codigo.setFocus()
-                
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
@@ -1501,11 +1538,11 @@ class SaidaRapidaWidget(QWidget):
             response = requests.post(url, headers=headers, json=dados)
             if response and response.status_code == 201:
                 self.estoque_atualizado.emit()
-                QMessageBox.information(self, "Sucesso", "Saída de estoque registrada com sucesso!")
+                QMessageBox.information(self, "Sucesso", "Saída de estoque registada com sucesso!")
                 self.resetar_formulario()
             else:
                 erro = response.json().get('erro', 'Erro desconhecido.')
-                QMessageBox.warning(self, "Erro", f"Não foi possível registrar a saída: {erro}")
+                QMessageBox.warning(self, "Erro", f"Não foi possível registar a saída: {erro}")
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
@@ -1532,9 +1569,9 @@ class UsuariosWidget(QWidget):
         self.btn_adicionar = QPushButton("➕ Adicionar Novo")
         self.btn_editar = QPushButton("✏️ Editar Selecionado")
         self.btn_desativar = QPushButton("🚫 Desativar/Reativar")
-        self.btn_adicionar.setObjectName("btnAdd")
-        self.btn_editar.setObjectName("btnEdit")
-        self.btn_desativar.setObjectName("btnDesativar")
+        self.btn_adicionar.setObjectName("btnPositive")
+        self.btn_editar.setObjectName("btnNeutral")
+        self.btn_desativar.setObjectName("btnNegative")
         layout_botoes.addWidget(self.btn_adicionar)
         layout_botoes.addWidget(self.btn_editar)
         layout_botoes.addWidget(self.btn_desativar)
@@ -1948,8 +1985,8 @@ class DashboardWidget(QWidget):
         layout_atalhos = QVBoxLayout()
         self.btn_atalho_entrada = QPushButton("➕\n\nRegistrar Entrada")
         self.btn_atalho_saida = QPushButton("➖\n\nRegistrar Saída")
-        self.btn_atalho_entrada.setObjectName("btnDashboardEntrada")
-        self.btn_atalho_saida.setObjectName("btnDashboardSaida")
+        self.btn_atalho_entrada.setObjectName("btnPositive")
+        self.btn_atalho_saida.setObjectName("btnNegative")
         layout_atalhos.addWidget(self.btn_atalho_entrada)
         layout_atalhos.addWidget(self.btn_atalho_saida)
         coluna_direita.addLayout(layout_atalhos)
