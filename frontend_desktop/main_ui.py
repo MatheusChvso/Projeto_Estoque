@@ -1558,6 +1558,7 @@ class SaidaRapidaWidget(QWidget):
         self.btn_registrar.setEnabled(False)
         self.input_codigo.setFocus()
 
+
 class UsuariosWidget(QWidget):
     def __init__(self):
         super().__init__()
@@ -1683,12 +1684,12 @@ class UsuariosWidget(QWidget):
 
 class JanelaPrincipal(QMainWindow):
     logoff_requested = Signal()
+
     def __init__(self):
         super().__init__()
         
         # --- BLOCO DE DEPURAÇÃO PARA APANHAR ERROS SILENCIOSOS ---
         try:
-            self.setWindowIcon(QIcon(resource_path("icone.ico")))
             self.setWindowTitle("Sistema de Gestão de Estoque")
             self.resize(1280, 720)
         
@@ -1804,6 +1805,8 @@ class JanelaPrincipal(QMainWindow):
             self.btn_fornecedores = QPushButton("🚚 Fornecedores")
             self.btn_naturezas = QPushButton("🌿 Naturezas")
             self.btn_usuarios = QPushButton("👥 Usuários")
+            self.btn_logoff = QPushButton("🚪 Fazer Logoff")
+            self.btn_logoff.setObjectName("btnLogoff")
 
             self.layout_painel_lateral.addWidget(self.btn_dashboard)
             self.layout_painel_lateral.addWidget(self.btn_produtos)
@@ -1813,12 +1816,9 @@ class JanelaPrincipal(QMainWindow):
             self.layout_painel_lateral.addWidget(self.btn_relatorios)
             self.layout_painel_lateral.addWidget(self.btn_fornecedores)
             self.layout_painel_lateral.addWidget(self.btn_naturezas)
-            self.layout_painel_lateral.addStretch(1) # Empurra o botão de logoff para o fundo
-            self.btn_logoff = QPushButton("🚪 Fazer Logoff")
-            self.btn_logoff.setObjectName("btnLogoff")
+            self.layout_painel_lateral.addStretch(1)
             self.layout_painel_lateral.addWidget(self.btn_logoff)
             
-            self.layout_painel_lateral.addStretch(1)
             layout_principal.addWidget(painel_lateral)
             layout_principal.addWidget(self.stacked_widget)
 
@@ -1844,10 +1844,13 @@ class JanelaPrincipal(QMainWindow):
             self.statusBar().showMessage("Pronto.")
 
         except Exception as e:
-            import traceback
-            error_text = f"Ocorreu um erro crítico ao iniciar a janela principal:\n\n{e}\n\n{traceback.format_exc()}"
-            QMessageBox.critical(self, "Erro de Inicialização", error_text)
-            # Fecha a aplicação se a janela principal não puder ser criada
+            # Se qualquer erro acontecer durante a inicialização, ele será apanhado aqui
+            error_log_path = os.path.join(os.path.expanduser("~"), "Desktop", "crash_log.txt")
+            with open(error_log_path, "w", encoding="utf-8") as f:
+                f.write(f"Ocorreu um erro crítico ao iniciar a janela principal:\n\n")
+                f.write(f"{e}\n\n")
+                f.write(traceback.format_exc())
+            QMessageBox.critical(self, "Erro de Inicialização", f"Ocorreu um erro crítico. Verifique o ficheiro 'crash_log.txt' no seu Ambiente de Trabalho.")
             sys.exit(1)
 
     # O resto da sua classe JanelaPrincipal continua aqui...

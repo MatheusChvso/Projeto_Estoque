@@ -607,29 +607,7 @@ def registrar_saida():
 
 
 
-@app.route('/api/estoque/saldos', methods=['GET'])
-@jwt_required()
-def get_saldos_estoque():
-    """Calcula e retorna o saldo de estoque para todos os produtos."""
-    try:
-        produtos = Produto.query.all()
-        saldos_json = []
-        for produto in produtos:
-            saldo_atual = calcular_saldo_produto(produto.id_produto)
-            saldos_json.append({
-                'id_produto': produto.id_produto,
-                # --- CORREÇÃO AQUI ---
-                # Lida com a possibilidade de o código ou nome serem nulos no banco de dados
-                'codigo': produto.codigo.strip() if produto.codigo else '',
-                'nome': produto.nome if produto.nome else 'Produto sem nome',
-                'saldo_atual': saldo_atual
-            })
-        return jsonify(saldos_json), 200
-    except Exception as e:
-        # Para debug, é útil imprimir o erro no terminal do servidor
-        print(f"!!! ERRO em /api/estoque/saldos: {e}")
-        # Retorna uma mensagem de erro genérica para o front-end
-        return jsonify({'erro': 'Ocorreu um erro interno no servidor ao calcular os saldos.'}), 500
+
 
 @app.route('/api/movimentacoes', methods=['GET'])
 @jwt_required()
