@@ -12,10 +12,12 @@ from flask_jwt_extended import (
     JWTManager
 )
 from datetime import datetime
+from datetime import timedelta
 from sqlalchemy import case, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
-
+import csv
+import io
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -85,7 +87,7 @@ class MovimentacaoEstoque(db.Model):
     id_movimentacao = db.Column(db.Integer, primary_key=True)
     id_produto = db.Column(db.Integer, db.ForeignKey('produto.Id_produto'), nullable=False)
     id_usuario = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
-    data_hora = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    data_hora = db.Column(db.DateTime, nullable=False, default=datetime.now)
     quantidade = db.Column(db.Integer, nullable=False)
     tipo = db.Column(db.Enum("Entrada", "Saida"), nullable=False)
     motivo_saida = db.Column(db.String(200))
@@ -146,7 +148,10 @@ def get_todos_produtos():
             query = query.filter(
                 or_(
                     Produto.nome.ilike(f"%{termo_busca}%"),
-                    Produto.codigo.ilike(f"%{termo_busca}%")
+                    Produto.codigo.ilike(f"%{termo_busca}%"),
+                    Produto.codigoB.ilike(f"%{termo_busca}%"), # <<< ADICIONE ESTA LINHA
+                    Produto.codigoC.ilike(f"%{termo_busca}%")  # <<< ADICIONE ESTA LINHA
+                    
                 )
             )
 
@@ -203,6 +208,105 @@ def add_novo_produto():
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+
+
+
+@app.route('/api/produtos/importar', methods=['POST'])
+@jwt_required()
+def importar_produtos_csv():
+    """
+    Processa um ficheiro CSV para cadastrar produtos em massa e, opcionalmente,
+    realizar a entrada de estoque inicial para cada um.
+    """
+    if 'file' not in request.files:
+        return jsonify({'erro': 'Nenhum ficheiro enviado.'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'erro': 'Nome de ficheiro vazio.'}), 400
+
+    sucesso_count = 0
+    erros = []
+    
+    try:
+        stream_content = file.stream.read().decode("UTF-8")
+        stream = io.StringIO(stream_content, newline=None)
+        header = stream.readline()
+        stream.seek(0)
+        delimiter = ';' if ';' in header else ','
+        csv_reader = csv.DictReader(stream, delimiter=delimiter)
+
+        id_usuario_logado = get_jwt_identity()
+
+        for linha_num, linha in enumerate(csv_reader, start=2):
+            try:
+                codigo = linha.get('codigo', '').strip()
+                nome = linha.get('nome', '').strip()
+                preco = linha.get('preco', '').strip()
+
+                if not codigo or not nome or not preco:
+                    erros.append(f"Linha {linha_num}: Campos obrigatórios (codigo, nome, preco) em falta.")
+                    continue
+
+                produto_existente = Produto.query.filter_by(codigo=codigo).first()
+                if produto_existente:
+                    erros.append(f"Linha {linha_num}: Código '{codigo}' já existe no sistema.")
+                    continue
+
+                novo_produto = Produto(
+                    codigo=codigo,
+                    nome=nome,
+                    preco=preco.replace(',', '.'),
+                    descricao=linha.get('descricao', '').strip()
+                )
+
+                fornecedores_nomes = [fn.strip() for fn in linha.get('fornecedores_nomes', '').split(',') if fn.strip()]
+                if fornecedores_nomes:
+                    fornecedores_db = Fornecedor.query.filter(Fornecedor.nome.in_(fornecedores_nomes)).all()
+                    novo_produto.fornecedores.extend(fornecedores_db)
+
+                naturezas_nomes = [nn.strip() for nn in linha.get('naturezas_nomes', '').split(',') if nn.strip()]
+                if naturezas_nomes:
+                    naturezas_db = Natureza.query.filter(Natureza.nome.in_(naturezas_nomes)).all()
+                    novo_produto.naturezas.extend(naturezas_db)
+
+                db.session.add(novo_produto)
+                
+                # --- LÓGICA DA ENTRADA INICIAL DE ESTOQUE ---
+                # Forçamos o SQLAlchemy a enviar o INSERT do produto para o banco,
+                # o que nos dá acesso ao seu ID para a movimentação, sem finalizar a transação.
+                db.session.flush()
+
+                quantidade_inicial_str = linha.get('quantidade', '0').strip()
+                if quantidade_inicial_str and int(quantidade_inicial_str) > 0:
+                    movimentacao_inicial = MovimentacaoEstoque(
+                        id_produto=novo_produto.id_produto, # Usa o ID do produto recém-criado
+                        id_usuario=id_usuario_logado,
+                        quantidade=int(quantidade_inicial_str),
+                        tipo='Entrada',
+                        motivo_saida='Balanço Inicial via Importação'
+                    )
+                    db.session.add(movimentacao_inicial)
+                # --- FIM DA LÓGICA DE ENTRADA ---
+                
+                sucesso_count += 1
+
+            except Exception as e_interno:
+                erros.append(f"Linha {linha_num}: Erro ao processar - {e_interno}. Verifique os nomes das colunas.")
+                continue
+
+        db.session.commit()
+        
+        return jsonify({
+            'mensagem': 'Importação concluída!',
+            'produtos_importados': sucesso_count,
+            'erros': erros
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': f'Ocorreu um erro geral ao processar o ficheiro: {str(e)}'}), 500
+
 
 
 @app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT', 'DELETE'])
@@ -400,16 +504,51 @@ def remover_natureza_do_produto(id_produto, id_natureza):
 # ... (resto do ficheiro)
 # --- ROTAS DE ESTOQUE ---
 
-@app.route('/api/produtos/<int:id_produto>/estoque', methods=['GET'])
+@app.route('/api/estoque/saldos', methods=['GET'])
 @jwt_required()
-def get_saldo_estoque(id_produto):
-    """Calcula e retorna o saldo atual de um produto."""
+def get_saldos_estoque():
+    """
+    Calcula e retorna o saldo de estoque para os produtos,
+    permitindo a busca por nome e códigos.
+    """
     try:
-        # Chama a função auxiliar para evitar código duplicado
-        saldo_calculado = calcular_saldo_produto(id_produto)
-        return jsonify({'id_produto': id_produto, 'saldo_atual': saldo_calculado}), 200
+        termo_busca = request.args.get('search')
+        
+        # Começa a query base de produtos
+        query = Produto.query
+
+        # Aplica o filtro de busca se um termo for fornecido
+        if termo_busca:
+            query = query.filter(
+                or_(
+                    Produto.nome.ilike(f"%{termo_busca}%"),
+                    Produto.codigo.ilike(f"%{termo_busca}%"),
+                    Produto.codigoB.ilike(f"%{termo_busca}%"),
+                    Produto.codigoC.ilike(f"%{termo_busca}%")
+                )
+            )
+
+        produtos_filtrados = query.all()
+        
+        saldos_json = []
+        for produto in produtos_filtrados:
+            saldo_atual = calcular_saldo_produto(produto.id_produto)
+            saldos_json.append({
+                'id_produto': produto.id_produto,
+                'codigo': produto.codigo.strip() if produto.codigo else '',
+                'nome': produto.nome if produto.nome else 'Produto sem nome',
+                'saldo_atual': saldo_atual,
+                # --- NOVOS CAMPOS ADICIONADOS ---
+                'preco': str(produto.preco),
+                'codigoB': produto.codigoB.strip() if produto.codigoB else '',
+                'codigoC': produto.codigoC.strip() if produto.codigoC else ''
+            })
+            
+        return jsonify(saldos_json), 200
+        
     except Exception as e:
-        return jsonify({'erro': str(e)}), 500
+        print(f"!!! ERRO em /api/estoque/saldos: {e}")
+        return jsonify({'erro': 'Ocorreu um erro interno no servidor ao calcular os saldos.'}), 500
 
 @app.route('/api/estoque/entrada', methods=['POST'])
 @jwt_required()
@@ -468,29 +607,7 @@ def registrar_saida():
 
 
 
-@app.route('/api/estoque/saldos', methods=['GET'])
-@jwt_required()
-def get_saldos_estoque():
-    """Calcula e retorna o saldo de estoque para todos os produtos."""
-    try:
-        produtos = Produto.query.all()
-        saldos_json = []
-        for produto in produtos:
-            saldo_atual = calcular_saldo_produto(produto.id_produto)
-            saldos_json.append({
-                'id_produto': produto.id_produto,
-                # --- CORREÇÃO AQUI ---
-                # Lida com a possibilidade de o código ou nome serem nulos no banco de dados
-                'codigo': produto.codigo.strip() if produto.codigo else '',
-                'nome': produto.nome if produto.nome else 'Produto sem nome',
-                'saldo_atual': saldo_atual
-            })
-        return jsonify(saldos_json), 200
-    except Exception as e:
-        # Para debug, é útil imprimir o erro no terminal do servidor
-        print(f"!!! ERRO em /api/estoque/saldos: {e}")
-        # Retorna uma mensagem de erro genérica para o front-end
-        return jsonify({'erro': 'Ocorreu um erro interno no servidor ao calcular os saldos.'}), 500
+
 
 @app.route('/api/movimentacoes', methods=['GET'])
 @jwt_required()
@@ -538,9 +655,10 @@ def get_todas_movimentacoes():
 
 # --- ROTAS DE LOGIN E USUÁRIOS ---
 
+
 @app.route('/api/login', methods=['POST'])
 def login_endpoint():
-    """Autentica um usuário e retorna um token de acesso."""
+    """Autentica um utilizador e retorna um token de acesso com duração prolongada."""
     try:
         dados = request.get_json()
         if not dados or 'login' not in dados or 'senha' not in dados:
@@ -552,15 +670,20 @@ def login_endpoint():
         usuario = Usuario.query.filter_by(login=login, ativo=True).first()
 
         if usuario and usuario.check_password(senha):
+            # --- A CORREÇÃO ESTÁ AQUI ---
+            # Criamos um token que agora é válido por 8 horas.
             access_token = create_access_token(
                 identity=str(usuario.id_usuario),
-                additional_claims={'permissao': usuario.permissao}
+                additional_claims={'permissao': usuario.permissao},
+                expires_delta=timedelta(hours=8) # Define a duração do token
             )
             return jsonify(access_token=access_token), 200
         else:
             return jsonify({"erro": "Credenciais inválidas"}), 401
+            
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+# ==============================================================================
     
     
     
@@ -978,27 +1101,30 @@ def gerar_inventario_pdf(dados):
 def gerar_historico_pdf(dados):
     """Gera um PDF do relatório de histórico de movimentações."""
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter)) # Paisagem para mais colunas
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter))
     elementos = []
     styles = getSampleStyleSheet()
 
-    # Título
     titulo = Paragraph("Relatório de Histórico de Movimentações", styles['h1'])
     elementos.append(titulo)
     elementos.append(Spacer(1, 12))
     
-    dados_tabela = [["Data/Hora", "Produto", "Tipo", "Qtd.", "Usuário", "Motivo da Saída"]]
+    # --- ALTERAÇÃO AQUI ---
+    dados_tabela = [["Data/Hora", "Produto", "Tipo", "Qtd.", "Saldo Após", "Usuário", "Motivo"]]
     for item in dados:
         dados_tabela.append([
             item['data_hora'],
             f"{item['produto_codigo']} - {item['produto_nome']}",
             item['tipo'],
             str(item['quantidade']),
+            str(item['saldo_apos']), # <<< NOVA LINHA
             item['usuario_nome'],
             item.get('motivo_saida', '')
         ])
         
-    tabela = Table(dados_tabela, colWidths=[120, 200, 60, 40, 100, 150]) # Larguras customizadas
+    # Ajuste nas larguras das colunas para a nova coluna
+    tabela = Table(dados_tabela, colWidths=[110, 180, 50, 40, 60, 100, 130]) 
+    # ... (o resto da função TableStyle continua igual)
     tabela.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -1012,7 +1138,6 @@ def gerar_historico_pdf(dados):
     doc.build(elementos)
     buffer.seek(0)
     return buffer
-
 
 # --- ENDPOINTS DA API DE RELATÓRIOS ---
 
@@ -1052,47 +1177,78 @@ def relatorio_inventario():
 @app.route('/api/relatorios/movimentacoes', methods=['GET'])
 @jwt_required()
 def relatorio_movimentacoes():
-    """Gera e retorna o relatório de movimentações filtrado."""
-    formato = request.args.get('formato', 'pdf').lower()
+    """
+    Gera e retorna o relatório de movimentações em vários formatos (PDF, XLSX, JSON).
+    """
+    # --- ALTERAÇÃO AQUI: O formato padrão agora é 'json' se não for especificado ---
+    formato = request.args.get('formato', 'json').lower()
     data_inicio_str = request.args.get('data_inicio')
+    # ... (o resto da lógica de busca e cálculo do saldo continua igual) ...
     data_fim_str = request.args.get('data_fim')
     tipo = request.args.get('tipo')
 
-    # Lógica para buscar os dados (a mesma de antes)
     query = MovimentacaoEstoque.query.options(
         joinedload(MovimentacaoEstoque.produto),
         joinedload(MovimentacaoEstoque.usuario)
-    ).order_by(MovimentacaoEstoque.data_hora.desc())
+    ).order_by(MovimentacaoEstoque.id_produto, MovimentacaoEstoque.data_hora)
 
     if data_inicio_str:
         query = query.filter(MovimentacaoEstoque.data_hora >= datetime.strptime(data_inicio_str, '%Y-%m-%d'))
     if data_fim_str:
         data_fim = datetime.strptime(data_fim_str, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
         query = query.filter(MovimentacaoEstoque.data_hora <= data_fim)
-    if tipo and tipo in ["Entrada", "Saida"]:
-        query = query.filter(MovimentacaoEstoque.tipo == tipo)
-
-    movimentacoes = query.all()
     
-    # --- CORREÇÃO ESTÁ AQUI ---
-    # Montamos os dados do relatório de forma mais segura.
+    todas_movimentacoes = query.all()
+
     dados_relatorio = []
-    for mov in movimentacoes:
+    saldos_atuais = {}
+
+    for mov in todas_movimentacoes:
+        id_produto = mov.id_produto
+        
+        if id_produto not in saldos_atuais:
+            saldo_inicial_query = db.session.query(
+                func.sum(case(
+                    (MovimentacaoEstoque.tipo == 'Entrada', MovimentacaoEstoque.quantidade),
+                    (MovimentacaoEstoque.tipo == 'Saida', -MovimentacaoEstoque.quantidade)
+                ))
+            ).filter(
+                MovimentacaoEstoque.id_produto == id_produto,
+                MovimentacaoEstoque.data_hora < datetime.strptime(data_inicio_str, '%Y-%m-%d') if data_inicio_str else True
+            )
+            saldo_inicial = saldo_inicial_query.scalar() or 0
+            saldos_atuais[id_produto] = saldo_inicial
+
+        if mov.tipo == 'Entrada':
+            saldos_atuais[id_produto] += mov.quantidade
+        else:
+            saldos_atuais[id_produto] -= mov.quantidade
+        
         dados_relatorio.append({
             'data_hora': mov.data_hora.strftime('%d/%m/%Y %H:%M:%S'),
             'produto_codigo': mov.produto.codigo.strip() if mov.produto else 'N/A',
             'produto_nome': mov.produto.nome if mov.produto else 'Produto Excluído',
             'tipo': mov.tipo,
             'quantidade': mov.quantidade,
+            'saldo_apos': saldos_atuais[id_produto],
             'usuario_nome': mov.usuario.nome if mov.usuario else 'Usuário Excluído',
-            'motivo_saida': mov.motivo_saida if mov.motivo_saida else '' # Usando a forma correta
+            'motivo_saida': mov.motivo_saida if mov.motivo_saida else ''
         })
 
-    if formato == 'xlsx':
+    if tipo and tipo in ["Entrada", "Saida"]:
+        dados_relatorio = [linha for linha in dados_relatorio if linha['tipo'] == tipo]
+
+    dados_relatorio.sort(key=lambda x: datetime.strptime(x['data_hora'], '%d/%m/%Y %H:%M:%S'), reverse=True)
+
+    # --- ALTERAÇÃO AQUI: Adicionamos uma nova condição para JSON ---
+    if formato == 'json':
+        return jsonify(dados_relatorio), 200
+    
+    elif formato == 'xlsx':
         df = pd.DataFrame(dados_relatorio)
         df = df.rename(columns={
             'data_hora': 'Data/Hora', 'produto_codigo': 'Cód. Produto', 'produto_nome': 'Nome Produto',
-            'tipo': 'Tipo', 'quantidade': 'Quantidade', 'usuario_nome': 'Usuário', 'motivo_saida': 'Motivo da Saída'
+            'tipo': 'Tipo', 'quantidade': 'Qtd. Mov.', 'saldo_apos': 'Saldo Após', 'usuario_nome': 'Usuário', 'motivo_saida': 'Motivo da Saída'
         })
         buffer = io.BytesIO()
         df.to_excel(buffer, index=False, engine='openpyxl')
@@ -1102,9 +1258,6 @@ def relatorio_movimentacoes():
     else: # PDF
         pdf_buffer = gerar_historico_pdf(dados_relatorio)
         return send_file(pdf_buffer, download_name="relatorio_movimentacoes.pdf", as_attachment=True)
-    
-if __name__ == '__main__':
-    app.run(debug=True)
     
     
 # ==============================================================================
