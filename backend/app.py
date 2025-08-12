@@ -63,7 +63,9 @@ class Produto(db.Model):
     nome = db.Column('Nome', db.String(100), nullable=False)
     codigo = db.Column('Codigo', db.String(20), unique=True, nullable=False)
     descricao = db.Column('Descricao', db.String(200))
-    preco = db.Column('Preco', db.Numeric(10, 2), nullable=False)
+    # --- ALTERAÇÃO AQUI ---
+    # Permite que o preço seja nulo e define um padrão de 0.00
+    preco = db.Column('Preco', db.Numeric(10, 2), nullable=True, default=0.00)
     codigoB = db.Column('CodigoB', db.String(20))
     codigoC = db.Column('CodigoC', db.String(20))
     
@@ -185,15 +187,18 @@ def add_novo_produto():
     """Cria um novo produto no sistema."""
     try:
         dados = request.get_json()
-        required_fields = ['nome', 'codigo', 'preco']
-        if not all(field in dados and dados[field] for field in required_fields):
-            return jsonify({'erro': 'Campos obrigatórios (nome, codigo, preco) não podem estar vazios.'}), 400
         
+        # --- ALTERAÇÃO AQUI: 'preco' foi removido dos campos obrigatórios ---
+        required_fields = ['nome', 'codigo']
+        if not all(field in dados and dados[field] for field in required_fields):
+            return jsonify({'erro': 'Campos obrigatórios (nome, codigo) não podem estar vazios.'}), 400
+
         novo_produto = Produto(
             nome=dados['nome'],
             codigo=dados['codigo'],
             descricao=dados.get('descricao'),
-            preco=dados['preco'],
+            # Usa o preço fornecido, ou 0 se não for enviado
+            preco=dados.get('preco', '0.00').replace(',', '.'), 
             codigoB=dados.get('codigoB'),
             codigoC=dados.get('codigoC')
         )
@@ -242,7 +247,7 @@ def importar_produtos_csv():
             try:
                 codigo = linha.get('codigo', '').strip()
                 nome = linha.get('nome', '').strip()
-                preco = linha.get('preco', '').strip()
+                preco_str = linha.get('preco', '0').strip()
 
                 if not codigo or not nome or not preco:
                     erros.append(f"Linha {linha_num}: Campos obrigatórios (codigo, nome, preco) em falta.")
@@ -504,51 +509,6 @@ def remover_natureza_do_produto(id_produto, id_natureza):
 # ... (resto do ficheiro)
 # --- ROTAS DE ESTOQUE ---
 
-@app.route('/api/estoque/saldos', methods=['GET'])
-@jwt_required()
-def get_saldos_estoque():
-    """
-    Calcula e retorna o saldo de estoque para os produtos,
-    permitindo a busca por nome e códigos.
-    """
-    try:
-        termo_busca = request.args.get('search')
-        
-        # Começa a query base de produtos
-        query = Produto.query
-
-        # Aplica o filtro de busca se um termo for fornecido
-        if termo_busca:
-            query = query.filter(
-                or_(
-                    Produto.nome.ilike(f"%{termo_busca}%"),
-                    Produto.codigo.ilike(f"%{termo_busca}%"),
-                    Produto.codigoB.ilike(f"%{termo_busca}%"),
-                    Produto.codigoC.ilike(f"%{termo_busca}%")
-                )
-            )
-
-        produtos_filtrados = query.all()
-        
-        saldos_json = []
-        for produto in produtos_filtrados:
-            saldo_atual = calcular_saldo_produto(produto.id_produto)
-            saldos_json.append({
-                'id_produto': produto.id_produto,
-                'codigo': produto.codigo.strip() if produto.codigo else '',
-                'nome': produto.nome if produto.nome else 'Produto sem nome',
-                'saldo_atual': saldo_atual,
-                # --- NOVOS CAMPOS ADICIONADOS ---
-                'preco': str(produto.preco),
-                'codigoB': produto.codigoB.strip() if produto.codigoB else '',
-                'codigoC': produto.codigoC.strip() if produto.codigoC else ''
-            })
-            
-        return jsonify(saldos_json), 200
-        
-    except Exception as e:
-        print(f"!!! ERRO em /api/estoque/saldos: {e}")
-        return jsonify({'erro': 'Ocorreu um erro interno no servidor ao calcular os saldos.'}), 500
 
 @app.route('/api/estoque/entrada', methods=['POST'])
 @jwt_required()
@@ -607,7 +567,51 @@ def registrar_saida():
 
 
 
+@app.route('/api/estoque/saldos', methods=['GET'])
+@jwt_required()
+def get_saldos_estoque():
+    """
+    Calcula e retorna o saldo de estoque para os produtos,
+    permitindo a busca por nome e códigos.
+    """
+    try:
+        termo_busca = request.args.get('search')
+        
+        # Começa a query base de produtos
+        query = Produto.query
 
+        # Aplica o filtro de busca se um termo for fornecido
+        if termo_busca:
+            query = query.filter(
+                or_(
+                    Produto.nome.ilike(f"%{termo_busca}%"),
+                    Produto.codigo.ilike(f"%{termo_busca}%"),
+                    Produto.codigoB.ilike(f"%{termo_busca}%"),
+                    Produto.codigoC.ilike(f"%{termo_busca}%")
+                )
+            )
+
+        produtos_filtrados = query.all()
+        
+        saldos_json = []
+        for produto in produtos_filtrados:
+            saldo_atual = calcular_saldo_produto(produto.id_produto)
+            saldos_json.append({
+                'id_produto': produto.id_produto,
+                'codigo': produto.codigo.strip() if produto.codigo else '',
+                'nome': produto.nome if produto.nome else 'Produto sem nome',
+                'saldo_atual': saldo_atual,
+                # --- NOVOS CAMPOS ADICIONADOS ---
+                'preco': str(produto.preco),
+                'codigoB': produto.codigoB.strip() if produto.codigoB else '',
+                'codigoC': produto.codigoC.strip() if produto.codigoC else ''
+            })
+            
+        return jsonify(saldos_json), 200
+        
+    except Exception as e:
+        print(f"!!! ERRO em /api/estoque/saldos: {e}")
+        return jsonify({'erro': 'Ocorreu um erro interno no servidor ao calcular os saldos.'}), 500
 
 @app.route('/api/movimentacoes', methods=['GET'])
 @jwt_required()

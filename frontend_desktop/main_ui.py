@@ -207,54 +207,28 @@ class FormularioProdutoDialog(QDialog):
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar listas de apoio: {e}")
 
-    def carregar_dados_produto(self):
-        global access_token
-        url = f"{API_BASE_URL}/api/produtos/{self.produto_id}"
-        headers = {'Authorization': f'Bearer {access_token}'}
-        try:
-            response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                dados = response.json()
-                self.input_codigo.setText(dados.get('codigo', ''))
-                self.input_nome.setText(dados.get('nome', ''))
-                self.input_descricao.setText(dados.get('descricao', ''))
-                self.input_preco.setText(dados.get('preco', '0.00'))
-                self.input_codigoB.setText(dados.get('codigoB', ''))
-                self.input_codigoC.setText(dados.get('codigoC', ''))
-
-                ids_fornecedores_associados = {f['id'] for f in dados.get('fornecedores', [])}
-                for i in range(self.lista_fornecedores.count()):
-                    item = self.lista_fornecedores.item(i)
-                    if item.data(Qt.UserRole) in ids_fornecedores_associados:
-                        item.setSelected(True)
-
-                ids_naturezas_associadas = {n['id'] for n in dados.get('naturezas', [])}
-                for i in range(self.lista_naturezas.count()):
-                    item = self.lista_naturezas.item(i)
-                    if item.data(Qt.UserRole) in ids_naturezas_associadas:
-                        item.setSelected(True)
-            else:
-                QMessageBox.warning(self, "Erro", "Não foi possível carregar os dados do produto.")
-                self.close()
-        except requests.exceptions.RequestException as e:
-            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar dados: {e}")
-            self.close()
-
     def accept(self):
+        # --- ALTERAÇÃO AQUI: 'preco' foi removido da validação ---
         nome = self.input_nome.text().strip()
         codigo = self.input_codigo.text().strip()
-        preco = self.input_preco.text().strip()
-        if not nome or not codigo or not preco:
-            QMessageBox.warning(self, "Campos Obrigatórios", "Por favor, preencha todos os campos: Código, Nome e Preço.")
+        
+        if not nome or not codigo:
+            QMessageBox.warning(self, "Campos Obrigatórios", "Por favor, preencha os campos: Código e Nome.")
             return
         
         global access_token
         headers = {'Authorization': f'Bearer {access_token}'}
         
+        preco_str = self.input_preco.text().strip().replace(',', '.')
+        
         dados_produto = {
-            "codigo": codigo, "nome": nome, "preco": preco.replace(',', '.'),
+            "codigo": codigo, 
+            "nome": nome, 
+            # Envia o preço apenas se ele foi preenchido
+            "preco": preco_str if preco_str else "0.00",
             "descricao": self.input_descricao.text(),
-            "codigoB": self.input_codigoB.text(), "codigoC": self.input_codigoC.text()
+            "codigoB": self.input_codigoB.text(), 
+            "codigoC": self.input_codigoC.text()
         }
         
         ids_fornecedores_selecionados = [
