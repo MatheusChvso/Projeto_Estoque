@@ -158,3 +158,62 @@ QLabel#dashboardTitle {
 QLabel#dashboardLogo {
     margin-bottom: 20px;
 }
+
+/* ============================================= */
+/* ESTILOS PARA O DASHBOARD MINIMALISTA          */
+/* ============================================= */
+
+/* Mensagem de Boas-vindas */
+QLabel#welcomeMessage {
+    font-size: 28px;
+    font-weight: 300; /* Uma fonte mais leve */
+    color: #f0f0f0;
+    margin-left: 20px;
+}
+
+/* Cartão de KPI Interativo */
+QFrame#kpiCard {
+    background-color: #3c3c3c;
+    border: 1px solid #4a4a4a;
+    border-radius: 8px;
+    min-height: 80px;
+}
+QFrame#kpiCard:hover {
+    background-color: #4a4a4a;
+    border: 1px solid #0078d7;
+}
+
+/* Ícone do KPI */
+QLabel#kpiIcon {
+    font-size: 20px;
+}
+
+/* Título do KPI (ex: "Produtos") */
+QLabel#kpiTitle {
+    color: #a0a0a0; /* Um cinza mais claro para o texto secundário */
+    font-size: 14px;
+}
+
+/* Valor do KPI (ex: "150") */
+QLabel#kpiValue {
+    font-size: 26px;
+    font-weight: 600; /* Semi-bold */
+    color: #f0f0f0;
+}
+
+/* Botões de Ação Grandes do Dashboard */
+QPushButton#btnDashboardAction {
+    background-color: #3c3c3c;
+    border: 1px solid #4a4a4a;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: normal;
+    text-align: center;
+    min-height: 120px;
+    padding: 15px;
+}
+QPushButton#btnDashboardAction:hover {
+    background-color: #4a4a4a;
+    color: #0078d7;
+    border: 1px solid #0078d7;
+}

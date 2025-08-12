@@ -1833,6 +1833,8 @@ class JanelaPrincipal(QMainWindow):
             self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
             self.btn_logoff.clicked.connect(self.logoff_requested.emit)
             
+            self.tela_dashboard.ir_para_produtos.connect(self.mostrar_tela_produtos)
+            self.tela_dashboard.ir_para_fornecedores.connect(self.mostrar_tela_fornecedores)
             self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
             self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
             self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
@@ -1915,86 +1917,100 @@ class JanelaPrincipal(QMainWindow):
         """Mostra a tela de importação de produtos."""
         self.stacked_widget.setCurrentWidget(self.tela_importacao)
 
-class KPICardWidget(QWidget):
-    def __init__(self, titulo, valor_inicial="0", cor_fundo="#0078d7"):
+class InteractiveKPICard(QFrame):
+    """Um cartão de KPI clicável que emite um sinal."""
+    clicked = Signal()
+
+    def __init__(self, titulo, valor_inicial="--", icone="●"):
         super().__init__()
-        self.setMinimumSize(200, 100)
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {cor_fundo};
-                border-radius: 8px;
-            }}
-            QLabel {{
-                color: white;
-            }}
-        """)
+        self.setObjectName("kpiCard")
+        self.setCursor(Qt.PointingHandCursor)
 
         self.layout = QVBoxLayout(self)
-        self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.setContentsMargins(15, 15, 15, 15)
+        self.layout.setSpacing(5)
+
+        top_layout = QHBoxLayout()
+        self.label_icone = QLabel(icone)
+        self.label_icone.setObjectName("kpiIcon")
+        self.label_titulo = QLabel(titulo)
+        self.label_titulo.setObjectName("kpiTitle")
+        top_layout.addWidget(self.label_icone)
+        top_layout.addWidget(self.label_titulo)
+        top_layout.addStretch(1)
 
         self.label_valor = QLabel(valor_inicial)
-        self.label_valor.setStyleSheet("font-size: 28px; font-weight: bold;")
-        self.label_valor.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.label_valor.setObjectName("kpiValue")
 
-        self.label_titulo = QLabel(titulo)
-        self.label_titulo.setStyleSheet("font-size: 14px;")
-        self.label_titulo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
+        self.layout.addLayout(top_layout)
         self.layout.addWidget(self.label_valor)
-        self.layout.addWidget(self.label_titulo)
 
     def set_valor(self, novo_valor):
         self.label_valor.setText(str(novo_valor))
 
+    def mouseReleaseEvent(self, event):
+        """Emite o sinal 'clicked' quando o cartão é clicado."""
+        self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
 class DashboardWidget(QWidget):
+    """Tela principal do dashboard com um design profissional e minimalista."""
+    # Sinais para navegar para outras telas
+    ir_para_produtos = Signal()
+    ir_para_fornecedores = Signal()
     ir_para_entrada_rapida = Signal()
     ir_para_saida_rapida = Signal()
 
     def __init__(self):
         super().__init__()
-        self.layout = QHBoxLayout(self)
+        self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.layout.setContentsMargins(30, 20, 30, 20)
         self.layout.setSpacing(20)
 
-        coluna_esquerda = QVBoxLayout()
-        coluna_esquerda.setAlignment(Qt.AlignmentFlag.AlignTop)
-
+        # --- CABEÇALHO: Logo e Mensagem de Boas-vindas ---
+        header_layout = QHBoxLayout()
         self.label_logo = QLabel()
         logo_pixmap = QPixmap(resource_path("logo.png"))
-        logo_redimensionada = logo_pixmap.scaled(250, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        logo_redimensionada = logo_pixmap.scaled(150, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         self.label_logo.setPixmap(logo_redimensionada)
-        self.label_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label_logo.setObjectName("dashboardLogo")
-        coluna_esquerda.addWidget(self.label_logo)
         
-        self.card_produtos = KPICardWidget("Produtos Cadastrados", cor_fundo="#0078d7")
-        self.card_fornecedores = KPICardWidget("Fornecedores", cor_fundo="#5c2d91")
-        self.card_valor_estoque = KPICardWidget("Valor do Estoque (R$)", cor_fundo="#00b294")
-        coluna_esquerda.addWidget(self.card_produtos)
-        coluna_esquerda.addWidget(self.card_fornecedores)
-        coluna_esquerda.addWidget(self.card_valor_estoque)
-        coluna_esquerda.addStretch(1)
+        self.label_boas_vindas = QLabel("Bem-vindo de volta!")
+        self.label_boas_vindas.setObjectName("welcomeMessage")
 
-        coluna_direita = QVBoxLayout()
-        coluna_direita.setAlignment(Qt.AlignmentFlag.AlignTop)
+        header_layout.addWidget(self.label_logo)
+        header_layout.addWidget(self.label_boas_vindas)
+        header_layout.addStretch(1)
 
-        label_atalhos = QLabel("Ações Rápidas")
-        label_atalhos.setObjectName("dashboardTitle")
-        coluna_direita.addWidget(label_atalhos)
+        # --- KPIs INTERATIVOS ---
+        kpi_layout = QHBoxLayout()
+        self.card_produtos = InteractiveKPICard("Produtos", icone="📦")
+        self.card_fornecedores = InteractiveKPICard("Fornecedores", icone="🚚")
+        self.card_valor_estoque = InteractiveKPICard("Valor do Estoque (R$)", icone="💰")
+        kpi_layout.addWidget(self.card_produtos)
+        kpi_layout.addWidget(self.card_fornecedores)
+        kpi_layout.addWidget(self.card_valor_estoque)
 
-        layout_atalhos = QVBoxLayout()
-        self.btn_atalho_entrada = QPushButton("➕\n\nRegistrar Entrada")
-        self.btn_atalho_saida = QPushButton("➖\n\nRegistrar Saída")
-        self.btn_atalho_entrada.setObjectName("btnPositive")
-        self.btn_atalho_saida.setObjectName("btnNegative")
-        layout_atalhos.addWidget(self.btn_atalho_entrada)
-        layout_atalhos.addWidget(self.btn_atalho_saida)
-        coluna_direita.addLayout(layout_atalhos)
-        coluna_direita.addStretch(1)
+        # --- BOTÕES DE AÇÃO PRINCIPAIS ---
+        action_layout = QHBoxLayout()
+        self.btn_atalho_entrada = QPushButton("➡️\n\nNova Entrada")
+        self.btn_atalho_entrada.setObjectName("btnDashboardAction")
+        self.btn_atalho_saida = QPushButton("⬅️\n\nNova Saída")
+        self.btn_atalho_saida.setObjectName("btnDashboardAction")
+        action_layout.addWidget(self.btn_atalho_entrada)
+        action_layout.addWidget(self.btn_atalho_saida)
 
-        self.layout.addLayout(coluna_esquerda, 1)
-        self.layout.addLayout(coluna_direita, 2)
+        # Adicionando tudo ao layout principal
+        self.layout.addLayout(header_layout)
+        self.layout.addWidget(QLabel("Resumo do Sistema")) # Um título simples
+        self.layout.addLayout(kpi_layout)
+        self.layout.addWidget(QLabel("Operações Comuns"))
+        self.layout.addLayout(action_layout)
+        self.layout.addStretch(1)
 
+        # --- Conexões ---
+        self.card_produtos.clicked.connect(self.ir_para_produtos.emit)
+        self.card_fornecedores.clicked.connect(self.ir_para_fornecedores.emit)
         self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
         self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
 
@@ -2007,14 +2023,15 @@ class DashboardWidget(QWidget):
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers, timeout=5)
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 dados = response.json()
                 self.card_produtos.set_valor(dados.get('total_produtos', 0))
                 self.card_fornecedores.set_valor(dados.get('total_fornecedores', 0))
-                valor_formatado = f"{dados.get('valor_total_estoque', 0):.2f}".replace('.', ',')
+                valor_formatado = f"R$ {dados.get('valor_total_estoque', 0):.2f}".replace('.', ',')
                 self.card_valor_estoque.set_valor(valor_formatado)
         except requests.exceptions.RequestException:
             print("Erro ao carregar KPIs do dashboard.")
+
         
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN
