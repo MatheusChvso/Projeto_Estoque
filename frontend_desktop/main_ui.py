@@ -1276,6 +1276,7 @@ class NaturezasWidget(QWidget):
                 QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
 class EntradaRapidaWidget(QWidget):
+    """Tela para registrar entradas de estoque de forma rápida por código de produto."""
     estoque_atualizado = Signal()
     def __init__(self):
         super().__init__()
@@ -1332,7 +1333,7 @@ class EntradaRapidaWidget(QWidget):
 
         try:
             response = requests.get(url, headers=headers)
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 dados_produto = response.json()
                 self.produto_encontrado_id = dados_produto['id']
                 nome = dados_produto['nome']
@@ -1342,11 +1343,17 @@ class EntradaRapidaWidget(QWidget):
                 self.btn_registrar.setEnabled(True)
                 self.input_quantidade.setFocus()
             else:
+                # --- CORREÇÃO AQUI ---
+                # Mostra a mensagem de erro e redefine o estado manualmente.
                 self.label_nome_produto.setText("Produto não encontrado!")
                 self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545;")
                 self.produto_encontrado_id = None
+                self.input_quantidade.clear()
                 self.input_quantidade.setEnabled(False)
                 self.btn_registrar.setEnabled(False)
+                self.input_codigo.selectAll() # Facilita a nova digitação
+                self.input_codigo.setFocus()
+
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
@@ -1366,7 +1373,7 @@ class EntradaRapidaWidget(QWidget):
 
         try:
             response = requests.post(url, headers=headers, json=dados)
-            if response.status_code == 201:
+            if response and response.status_code == 201:
                 self.estoque_atualizado.emit()
                 QMessageBox.information(self, "Sucesso", "Entrada de estoque registrada com sucesso!")
                 self.resetar_formulario()
@@ -1387,6 +1394,7 @@ class EntradaRapidaWidget(QWidget):
         self.input_codigo.setFocus()
 
 class SaidaRapidaWidget(QWidget):
+    """Tela para registrar saídas de estoque de forma rápida por código de produto."""
     estoque_atualizado = Signal()
 
     def __init__(self):
@@ -1444,7 +1452,7 @@ class SaidaRapidaWidget(QWidget):
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 dados_produto = response.json()
                 self.produto_encontrado_id = dados_produto['id']
                 self.label_nome_produto.setText(dados_produto['nome'])
@@ -1454,9 +1462,18 @@ class SaidaRapidaWidget(QWidget):
                 self.btn_registrar.setEnabled(True)
                 self.input_quantidade.setFocus()
             else:
+                # --- CORREÇÃO AQUI ---
                 self.label_nome_produto.setText("Produto não encontrado!")
                 self.label_nome_produto.setStyleSheet("font-size: 16px; font-weight: bold; color: #dc3545;")
-                self.resetar_formulario(manter_codigo=True)
+                self.produto_encontrado_id = None
+                self.input_quantidade.clear()
+                self.input_motivo.clear()
+                self.input_quantidade.setEnabled(False)
+                self.input_motivo.setEnabled(False)
+                self.btn_registrar.setEnabled(False)
+                self.input_codigo.selectAll()
+                self.input_codigo.setFocus()
+                
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
@@ -1482,7 +1499,7 @@ class SaidaRapidaWidget(QWidget):
 
         try:
             response = requests.post(url, headers=headers, json=dados)
-            if response.status_code == 201:
+            if response and response.status_code == 201:
                 self.estoque_atualizado.emit()
                 QMessageBox.information(self, "Sucesso", "Saída de estoque registrada com sucesso!")
                 self.resetar_formulario()
@@ -1492,11 +1509,9 @@ class SaidaRapidaWidget(QWidget):
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
-    def resetar_formulario(self, manter_codigo=False):
-        if not manter_codigo:
-            self.input_codigo.clear()
-        
+    def resetar_formulario(self):
         self.produto_encontrado_id = None
+        self.input_codigo.clear()
         self.input_quantidade.clear()
         self.input_motivo.clear()
         self.label_nome_produto.setText("Aguardando verificação...")
