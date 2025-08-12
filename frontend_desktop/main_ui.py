@@ -1630,6 +1630,7 @@ class UsuariosWidget(QWidget):
 # ==============================================================================
 
 class JanelaPrincipal(QMainWindow):
+    logoff_requested = Signal()
     def __init__(self):
         super().__init__()
         
@@ -1675,6 +1676,9 @@ class JanelaPrincipal(QMainWindow):
             acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
             menu_arquivo.addAction(acao_dashboard)
             menu_arquivo.addSeparator()
+            acao_logoff = QAction("Fazer Logoff", self)
+            acao_logoff.triggered.connect(self.logoff_requested.emit)
+            menu_arquivo.addAction(acao_logoff)
             acao_sair = QAction("Sair", self)
             acao_sair.setShortcut(QKeySequence.Quit)
             acao_sair.triggered.connect(self.close)
@@ -1757,6 +1761,10 @@ class JanelaPrincipal(QMainWindow):
             self.layout_painel_lateral.addWidget(self.btn_relatorios)
             self.layout_painel_lateral.addWidget(self.btn_fornecedores)
             self.layout_painel_lateral.addWidget(self.btn_naturezas)
+            self.layout_painel_lateral.addStretch(1) # Empurra o botão de logoff para o fundo
+            self.btn_logoff = QPushButton("🚪 Fazer Logoff")
+            self.btn_logoff.setObjectName("btnLogoff")
+            self.layout_painel_lateral.addWidget(self.btn_logoff)
             
             self.layout_painel_lateral.addStretch(1)
             layout_principal.addWidget(painel_lateral)
@@ -1771,6 +1779,7 @@ class JanelaPrincipal(QMainWindow):
             self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
             self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
             self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
+            self.btn_logoff.clicked.connect(self.logoff_requested.emit)
             
             self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
             self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
@@ -1958,10 +1967,45 @@ class DashboardWidget(QWidget):
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN
 # ==============================================================================
+
+class AppManager:
+    """Classe para gerir o ciclo de vida das janelas da aplicação."""
+    def __init__(self):
+        self.login_window = None
+        self.main_window = None
+
+    def start(self):
+        """Inicia a aplicação mostrando a janela de login."""
+        self.show_login_window()
+
+    def show_login_window(self):
+        """Cria e exibe a janela de login."""
+        self.login_window = JanelaLogin()
+        self.login_window.login_successful.connect(self.show_main_window)
+        self.login_window.show()
+
+    def show_main_window(self, user_data):
+        """Cria e exibe a janela principal após um login bem-sucedido."""
+        self.main_window = JanelaPrincipal()
+        self.main_window.carregar_dados_usuario(user_data)
+        self.main_window.show()
+        self.main_window.mostrar_tela_dashboard()
+        self.main_window.logoff_requested.connect(self.handle_logoff)
+        self.login_window.close()
+
+    def handle_logoff(self):
+        """Fecha a janela principal e volta para a tela de login."""
+        if self.main_window:
+            self.main_window.close()
+        self.show_login_window()
+
+
 class JanelaLogin(QWidget):
+    login_successful = Signal(dict) # Sinal que carrega os dados do utilizador
+
     def __init__(self):
         super().__init__()
-        self.setWindowIcon(QIcon(resource_path("icone.ico")))
+        # ... (o resto do seu __init__ continua igual)
         self.setWindowTitle("Meu Sistema de Gestão - Login")
         self.resize(300, 350)
         self.janela_principal = None
@@ -2016,17 +2060,16 @@ class JanelaLogin(QWidget):
                 else:
                     dados_usuario_logado = {'nome': 'Desconhecido', 'permissao': 'Usuario'}
                 
+                # --- A MUDANÇA ESTÁ AQUI ---
+                # Em vez de criar a janela, apenas emitimos o sinal de sucesso
+                self.login_successful.emit(dados_usuario_logado)
                 self.close()
-                
-                self.janela_principal = JanelaPrincipal()
-                self.janela_principal.carregar_dados_usuario(dados_usuario_logado)
-                self.janela_principal.show()
-                self.janela_principal.mostrar_tela_dashboard()
             else:
                 erro_msg = response.json().get('erro', 'Ocorreu um erro desconhecido.')
                 QMessageBox.warning(self, "Erro de Login", f"Falha no login: {erro_msg}")
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
 
 # ==============================================================================
 # 7. BLOCO DE EXECUÇÃO PRINCIPAL
@@ -2038,8 +2081,10 @@ if __name__ == "__main__":
         with open(resource_path("style.qss"), "r", encoding="utf-8") as f:
             app.setStyleSheet(f.read())
     except FileNotFoundError:
-        print("AVISO: Arquivo de estilo (style.qss) não encontrado. Usando estilo padrão.")
+        print("AVISO: Arquivo de estilo (style.qss) não encontrado.")
     
-    janela_login = JanelaLogin()
-    janela_login.show()
+    # Cria o gestor e inicia a aplicação
+    manager = AppManager()
+    manager.start()
+    
     sys.exit(app.exec())

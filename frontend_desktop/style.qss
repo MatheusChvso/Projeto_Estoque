@@ -40,7 +40,7 @@ QComboBox::drop-down {
 /* ----- BOTÕES DE AÇÃO ESPECÍFICOS ----- */
 ProdutosWidget QPushButton, UsuariosWidget QPushButton, FornecedoresWidget QPushButton, NaturezasWidget QPushButton {
     padding: 10px 20px;
-    border: 1px solid #00000033;
+    border: 1px solid #3db91733;
     border-radius: 6px;
     font-size: 15px;
     font-weight: bold;
@@ -268,4 +268,23 @@ QPushButton#btnQuickAdd:pressed {
 QTableWidget::item:selected {
     background-color: #0078d7; /* Nosso azul de destaque */
     color: white;              /* Texto branco para contraste máximo */
+}
+
+/* ============================================= */
+/* ESTILO PARA O BOTÃO DE LOGOFF                 */
+/* ============================================= */
+
+QPushButton#btnLogoff {
+    background-color: #6c757d; /* Um cinza neutro */
+    color: white;
+    font-weight: bold;
+    margin-top: 15px; /* Espaço para o separar dos outros botões */
+}
+
+QPushButton#btnLogoff:hover {
+    background-color: #5a6268;
+}
+
+QPushButton#btnLogoff:pressed {
+    background-color: #495057;
 }
