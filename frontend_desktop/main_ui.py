@@ -21,7 +21,7 @@ from PySide6.QtGui import (
 from PySide6.QtCore import (
     Qt, QTimer, Signal, QDate, QEvent
 )
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QThread
 
 from config import SERVER_IP
 
@@ -56,16 +56,72 @@ def resource_path(relative_path):
 # 3. JANELAS DE DIÁLOGO (FORMULÁRIOS)
 # ==============================================================================
 
+class FormDataLoader(QObject):
+    """Worker que carrega os dados do formulário numa thread separada de forma otimizada."""
+    finished = Signal(dict)
+
+    def __init__(self, produto_id):
+        super().__init__()
+        self.produto_id = produto_id
+
+    def run(self):
+        results = {'status': 'success'}
+        try:
+            global access_token
+            headers = {'Authorization': f'Bearer {access_token}'}
+            timeout = 10  # Podemos ser mais generosos com um único pedido
+
+            params = {}
+            if self.produto_id:
+                params['produto_id'] = self.produto_id
+
+            # Faz um único pedido para o novo endpoint otimizado
+            response = requests.get(
+                f"{API_BASE_URL}/api/formularios/produto_data", 
+                headers=headers, 
+                params=params, 
+                timeout=timeout
+            )
+            response.raise_for_status()
+            
+            # Extrai os dados da resposta única
+            data = response.json()
+            results['fornecedores'] = data.get('fornecedores', [])
+            results['naturezas'] = data.get('naturezas', [])
+            if data.get('produto'):
+                results['produto'] = data['produto']
+        
+        except requests.exceptions.Timeout:
+            results['status'] = 'error'
+            results['message'] = "O servidor demorou demasiado a responder (Timeout).\nVerifique a sua conexão de rede e se o servidor está a funcionar."
+        except requests.exceptions.ConnectionError:
+            results['status'] = 'error'
+            results['message'] = "Não foi possível conectar ao servidor.\nVerifique o endereço IP no ficheiro config.py e o estado do servidor."
+        except requests.exceptions.HTTPError as http_err:
+            results['status'] = 'error'
+            results['message'] = f"Ocorreu um erro na API: {http_err}"
+        except Exception as e:
+            results['status'] = 'error'
+            results['message'] = f"Ocorreu um erro inesperado: {e}"
+        
+        self.finished.emit(results)
+
+
+
 class FormularioProdutoDialog(QDialog):
     """Janela de formulário para Adicionar ou Editar um Produto."""
-    def __init__(self, parent=None, produto_id=None):
+    produto_atualizado = Signal(int, dict)
+
+    def __init__(self, parent=None, produto_id=None, row=None):
         super().__init__(parent)
         self.produto_id = produto_id
+        self.row = row
         self.setWindowTitle("Adicionar Novo Produto" if self.produto_id is None else "Editar Produto")
         self.setMinimumSize(450, 600)
         self.layout = QFormLayout(self)
+        
+        self.dados_produto_carregados = None
     
-        # 1. CRIAÇÃO DE TODOS OS COMPONENTES VISUAIS
         self.input_codigo = QLineEdit()
         self.input_nome = QLineEdit()
         self.input_descricao = QLineEdit()
@@ -93,7 +149,6 @@ class FormularioProdutoDialog(QDialog):
         self.verificacao_timer.setSingleShot(True)
         self.verificacao_timer.timeout.connect(self.verificar_codigo_produto)
     
-        # 2. ORGANIZAÇÃO DO LAYOUT
         layout_codigo = QHBoxLayout()
         layout_codigo.addWidget(self.input_codigo)
         layout_codigo.addWidget(self.label_status_codigo)
@@ -120,7 +175,6 @@ class FormularioProdutoDialog(QDialog):
         self.layout.addRow(self.lista_naturezas)
         self.layout.addWidget(self.botoes)
         
-        # 3. CONEXÕES DOS SINAIS
         self.input_codigo.installEventFilter(self)
         self.input_codigo.textChanged.connect(self.iniciar_verificacao_timer)
         self.input_codigoC.returnPressed.connect(self.botoes.button(QDialogButtonBox.StandardButton.Save).click)
@@ -131,7 +185,10 @@ class FormularioProdutoDialog(QDialog):
         self.botoes.accepted.connect(self.accept)
         self.botoes.rejected.connect(self.reject)
         
-        # 4. CARGA INICIAL DE DADOS
+        self.carregar_dados_iniciais()
+
+    def carregar_dados_iniciais(self):
+        """Método central que controla a ordem de carregamento dos dados."""
         self.carregar_listas_de_apoio()
         if self.produto_id:
             self.carregar_dados_produto()
@@ -160,10 +217,10 @@ class FormularioProdutoDialog(QDialog):
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
             response = requests.get(url, headers=headers)
-            if response.status_code == 404:
+            if response and response.status_code == 404:
                 self.label_status_codigo.setText("✅ Disponível")
                 self.label_status_codigo.setStyleSheet("color: #28a745;")
-            elif response.status_code == 200:
+            elif response and response.status_code == 200:
                 self.label_status_codigo.setText("❌ Já existe!")
                 self.label_status_codigo.setStyleSheet("color: #dc3545;")
             else:
@@ -181,7 +238,7 @@ class FormularioProdutoDialog(QDialog):
         dialog = QuickAddDialog(self, "Adicionar Nova Natureza", "/api/naturezas")
         dialog.item_adicionado.connect(self.carregar_listas_de_apoio)
         dialog.exec()
-        
+
     def carregar_listas_de_apoio(self):
         self.lista_fornecedores.clear()
         self.lista_naturezas.clear()
@@ -191,7 +248,7 @@ class FormularioProdutoDialog(QDialog):
         try:
             url_forn = f"{API_BASE_URL}/api/fornecedores"
             response_forn = requests.get(url_forn, headers=headers)
-            if response_forn.status_code == 200:
+            if response_forn and response_forn.status_code == 200:
                 for forn in response_forn.json():
                     item = QListWidgetItem(forn['nome'])
                     item.setData(Qt.UserRole, forn['id'])
@@ -199,7 +256,7 @@ class FormularioProdutoDialog(QDialog):
             
             url_nat = f"{API_BASE_URL}/api/naturezas"
             response_nat = requests.get(url_nat, headers=headers)
-            if response_nat.status_code == 200:
+            if response_nat and response_nat.status_code == 200:
                 for nat in response_nat.json():
                     item = QListWidgetItem(nat['nome'])
                     item.setData(Qt.UserRole, nat['id'])
@@ -207,8 +264,40 @@ class FormularioProdutoDialog(QDialog):
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar listas de apoio: {e}")
 
+    def carregar_dados_produto(self):
+        global access_token
+        url = f"{API_BASE_URL}/api/produtos/{self.produto_id}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response and response.status_code == 200:
+                dados = response.json()
+                self.input_codigo.setText(dados.get('codigo', ''))
+                self.input_nome.setText(dados.get('nome', ''))
+                self.input_descricao.setText(dados.get('descricao', ''))
+                self.input_preco.setText(str(dados.get('preco', '0.00')))
+                self.input_codigoB.setText(dados.get('codigoB', ''))
+                self.input_codigoC.setText(dados.get('codigoC', ''))
+
+                ids_fornecedores_associados = {f['id'] for f in dados.get('fornecedores', [])}
+                for i in range(self.lista_fornecedores.count()):
+                    item = self.lista_fornecedores.item(i)
+                    if item.data(Qt.UserRole) in ids_fornecedores_associados:
+                        item.setSelected(True)
+
+                ids_naturezas_associadas = {n['id'] for n in dados.get('naturezas', [])}
+                for i in range(self.lista_naturezas.count()):
+                    item = self.lista_naturezas.item(i)
+                    if item.data(Qt.UserRole) in ids_naturezas_associadas:
+                        item.setSelected(True)
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar os dados do produto.")
+                self.close()
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Erro ao carregar dados: {e}")
+            self.close()
+
     def accept(self):
-        # --- ALTERAÇÃO AQUI: 'preco' foi removido da validação ---
         nome = self.input_nome.text().strip()
         codigo = self.input_codigo.text().strip()
         
@@ -224,7 +313,6 @@ class FormularioProdutoDialog(QDialog):
         dados_produto = {
             "codigo": codigo, 
             "nome": nome, 
-            # Envia o preço apenas se ele foi preenchido
             "preco": preco_str if preco_str else "0.00",
             "descricao": self.input_descricao.text(),
             "codigoB": self.input_codigoB.text(), 
@@ -247,7 +335,7 @@ class FormularioProdutoDialog(QDialog):
             if self.produto_id is None:
                 url_produto = f"{API_BASE_URL}/api/produtos"
                 response_produto = requests.post(url_produto, headers=headers, json=dados_produto)
-                if response_produto.status_code != 201:
+                if not response_produto or response_produto.status_code != 201:
                     raise Exception(response_produto.json().get('erro', 'Erro ao criar produto'))
                 
                 produto_salvo_id = response_produto.json().get('id_produto_criado')
@@ -256,8 +344,9 @@ class FormularioProdutoDialog(QDialog):
                 url_update = f"{API_BASE_URL}/api/produtos/{produto_salvo_id}"
                 response_update = requests.put(url_update, headers=headers, json=dados_produto)
 
-                if response_update.status_code != 200:
+                if not response_update or response_update.status_code != 200:
                     raise Exception(response_update.json().get('erro', 'Produto criado, mas falha ao salvar associações'))
+                super().accept()
             else:
                 dados_produto['fornecedores_ids'] = ids_fornecedores_selecionados
                 dados_produto['naturezas_ids'] = ids_naturezas_selecionadas
@@ -265,13 +354,19 @@ class FormularioProdutoDialog(QDialog):
                 url = f"{API_BASE_URL}/api/produtos/{self.produto_id}"
                 response = requests.put(url, headers=headers, json=dados_produto)
 
-                if response.status_code != 200:
+                if not response or response.status_code != 200:
                     raise Exception(response.json().get('erro', 'Erro ao atualizar produto'))
 
-            QMessageBox.information(self, "Sucesso", "Produto salvo com sucesso!")
-            super().accept()
+                dados_atualizados = response.json()
+                self.produto_atualizado.emit(self.row, dados_atualizados)
+                QMessageBox.information(self, "Sucesso", "Produto atualizado com sucesso!")
+                super().accept()
+
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
+            
+            
+            
 
 class FormularioFornecedorDialog(QDialog):
     def __init__(self, parent=None, fornecedor_id=None):
@@ -618,6 +713,7 @@ class ImportacaoWidget(QWidget):
         self.btn_importar.setEnabled(False)
 
 class ProdutosWidget(QWidget):
+    """Tela para gerir (CRUD) os produtos."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
@@ -644,6 +740,7 @@ class ProdutosWidget(QWidget):
         self.tabela_produtos.setHorizontalHeaderLabels(["Código", "Nome", "Descrição", "Preço", "Código B", "Código C", "Fornecedores", "Naturezas"])
         self.tabela_produtos.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_produtos.setAlternatingRowColors(True)
+        self.tabela_produtos.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         header = self.tabela_produtos.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -669,7 +766,6 @@ class ProdutosWidget(QWidget):
 
     def abrir_formulario_adicionar(self):
         dialog = FormularioProdutoDialog(self)
-        dialog.carregar_listas_de_apoio()
         if dialog.exec():
             self.carregar_produtos()
 
@@ -678,12 +774,31 @@ class ProdutosWidget(QWidget):
         if linha_selecionada < 0:
             QMessageBox.warning(self, "Seleção", "Por favor, selecione um produto na tabela para editar.")
             return
+        
         item = self.tabela_produtos.item(linha_selecionada, 0)
         produto_id = item.data(Qt.UserRole)
-        dialog = FormularioProdutoDialog(self, produto_id=produto_id)
-        dialog.carregar_listas_de_apoio()
-        if dialog.exec():
-            self.carregar_produtos()
+
+        dialog = FormularioProdutoDialog(self, produto_id=produto_id, row=linha_selecionada)
+        dialog.produto_atualizado.connect(self.atualizar_linha_produto)
+        dialog.exec()
+
+    def atualizar_linha_produto(self, linha, dados_produto):
+        """Atualiza uma única linha na tabela com os novos dados, sem recarregar tudo."""
+        # --- CORREÇÃO AQUI ---
+        # Cria o novo item para a primeira coluna
+        item_codigo = QTableWidgetItem(dados_produto['codigo'])
+        # Re-define o ID do produto no UserRole para futuras edições
+        item_codigo.setData(Qt.UserRole, dados_produto['id'])
+        self.tabela_produtos.setItem(linha, 0, item_codigo)
+        # --- FIM DA CORREÇÃO ---
+
+        self.tabela_produtos.setItem(linha, 1, QTableWidgetItem(dados_produto['nome']))
+        self.tabela_produtos.setItem(linha, 2, QTableWidgetItem(dados_produto['descricao']))
+        self.tabela_produtos.setItem(linha, 3, QTableWidgetItem(dados_produto['preco']))
+        self.tabela_produtos.setItem(linha, 4, QTableWidgetItem(dados_produto.get('codigoB', '')))
+        self.tabela_produtos.setItem(linha, 5, QTableWidgetItem(dados_produto.get('codigoC', '')))
+        self.tabela_produtos.setItem(linha, 6, QTableWidgetItem(dados_produto.get('fornecedores', '')))
+        self.tabela_produtos.setItem(linha, 7, QTableWidgetItem(dados_produto.get('naturezas', '')))
 
     def excluir_produto_selecionado(self):
         linha_selecionada = self.tabela_produtos.currentRow()
@@ -703,7 +818,7 @@ class ProdutosWidget(QWidget):
             headers = {'Authorization': f'Bearer {access_token}'}
             try:
                 response = requests.delete(url, headers=headers)
-                if response.status_code == 200:
+                if response and response.status_code == 200:
                     QMessageBox.information(self, "Sucesso", "Produto excluído com sucesso!")
                     self.carregar_produtos()
                 else:
@@ -724,7 +839,7 @@ class ProdutosWidget(QWidget):
         
         try:
             response = requests.get(url, headers=headers, params=params)
-            if response.status_code == 200:
+            if response and response.status_code == 200:
                 produtos = response.json()
                 self.tabela_produtos.setRowCount(len(produtos))
                 for linha, produto in enumerate(produtos):
@@ -743,6 +858,7 @@ class ProdutosWidget(QWidget):
         except requests.exceptions.RequestException as e:
             print(f"Erro de Conexão: {e}")
 
+            
 class SaldosWidget(QWidget):
     """Tela para visualizar os saldos de estoque, com pesquisa via API e ordenação local."""
     def __init__(self):
@@ -1902,7 +2018,7 @@ class JanelaPrincipal(QMainWindow):
         QMessageBox.about(self, 
             "Sobre o Sistema de Gestão de Estoque",
             """
-            <b>Sistema de Gestão de Estoque v1.1</b>
+            <b>Sistema de Gestão de Estoque v1.14</b>
             <p>Desenvolvido para controle de estoque na Szm.</p>
             <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
             <p>Agradecimentos especiais a Mathias pela colaboração e testes.</p>

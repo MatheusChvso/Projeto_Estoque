@@ -18,6 +18,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import func
 import csv
 import io
+from sqlalchemy.orm import joinedload
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -139,47 +140,72 @@ def calcular_saldo_produto(id_produto):
 @app.route('/api/produtos', methods=['GET'])
 @jwt_required()
 def get_todos_produtos():
-    """Retorna uma lista de todos os produtos, incluindo os nomes dos seus fornecedores e naturezas."""
+    """Retorna uma lista de produtos de forma otimizada, fazendo queries simples e juntando os dados em Python."""
     try:
         termo_busca = request.args.get('search')
-        # O .options(joinedload(...)) é uma otimização para carregar os dados relacionados
-        # de forma mais eficiente, evitando múltiplas consultas ao banco.
-        query = Produto.query.options(joinedload(Produto.fornecedores), joinedload(Produto.naturezas))
         
+        # --- CORREÇÃO DE PERFORMANCE FINAL ---
+        # 1. Busca principal de produtos (muito rápido)
+        query = Produto.query
         if termo_busca:
             query = query.filter(
                 or_(
                     Produto.nome.ilike(f"%{termo_busca}%"),
                     Produto.codigo.ilike(f"%{termo_busca}%"),
-                    Produto.codigoB.ilike(f"%{termo_busca}%"), # <<< ADICIONE ESTA LINHA
-                    Produto.codigoC.ilike(f"%{termo_busca}%")  # <<< ADICIONE ESTA LINHA
-                    
+                    Produto.codigoB.ilike(f"%{termo_busca}%"),
+                    Produto.codigoC.ilike(f"%{termo_busca}%")
                 )
             )
-
         produtos_db = query.all()
+        
+        if not produtos_db:
+            return jsonify([]), 200
+
+        product_ids = [p.id_produto for p in produtos_db]
+
+        # 2. Busca de todos os dados de apoio em queries simples e rápidas
+        fornecedores_map = {f.id_fornecedor: f.nome for f in Fornecedor.query.all()}
+        naturezas_map = {n.id_natureza: n.nome for n in Natureza.query.all()}
+        
+        prod_forn_assoc = db.session.query(produto_fornecedor).filter(produto_fornecedor.c.FK_PRODUTO_Id_produto.in_(product_ids)).all()
+        prod_nat_assoc = db.session.query(produto_natureza).filter(produto_natureza.c.fk_PRODUTO_Id_produto.in_(product_ids)).all()
+
+        # 3. Organiza as associações em dicionários para acesso instantâneo
+        produto_fornecedores = {}
+        for p_id, f_id in prod_forn_assoc:
+            if p_id not in produto_fornecedores:
+                produto_fornecedores[p_id] = []
+            produto_fornecedores[p_id].append(fornecedores_map.get(f_id, ''))
+
+        produto_naturezas = {}
+        for p_id, n_id in prod_nat_assoc:
+            if p_id not in produto_naturezas:
+                produto_naturezas[p_id] = []
+            produto_naturezas[p_id].append(naturezas_map.get(n_id, ''))
+
+        # 4. Monta o JSON final, juntando os dados em Python (ultra-rápido)
         produtos_json = []
         for produto in produtos_db:
-            # --- MUDANÇA PRINCIPAL AQUI ---
-            # Cria uma string com os nomes dos fornecedores, separados por vírgula
-            fornecedores_str = ", ".join([f.nome for f in produto.fornecedores])
-            # Cria uma string com os nomes das naturezas
-            naturezas_str = ", ".join([n.nome for n in produto.naturezas])
-
+            fornecedores_list = produto_fornecedores.get(produto.id_produto, [])
+            naturezas_list = produto_naturezas.get(produto.id_produto, [])
+            
             produtos_json.append({
                 'id': produto.id_produto,
                 'nome': produto.nome,
-                'codigo': produto.codigo.strip(),
+                'codigo': produto.codigo.strip() if produto.codigo else '',
                 'descricao': produto.descricao,
                 'preco': str(produto.preco),
                 'codigoB': produto.codigoB,
                 'codigoC': produto.codigoC,
-                'fornecedores': fornecedores_str, # <-- Novo campo
-                'naturezas': naturezas_str      # <-- Novo campo
+                'fornecedores': ", ".join(sorted(fornecedores_list)),
+                'naturezas': ", ".join(sorted(naturezas_list))
             })
+            
         return jsonify(produtos_json), 200
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+
+
 
 @app.route('/api/produtos', methods=['POST'])
 @jwt_required()
@@ -220,8 +246,8 @@ def add_novo_produto():
 @jwt_required()
 def importar_produtos_csv():
     """
-    Processa um ficheiro CSV para cadastrar produtos em massa e, opcionalmente,
-    realizar a entrada de estoque inicial para cada um.
+    Processa um ficheiro CSV para cadastrar produtos em massa, lidando com
+    diferentes codificações de ficheiro (UTF-8 e Latin-1/cp1252).
     """
     if 'file' not in request.files:
         return jsonify({'erro': 'Nenhum ficheiro enviado.'}), 400
@@ -234,8 +260,19 @@ def importar_produtos_csv():
     erros = []
     
     try:
-        stream_content = file.stream.read().decode("UTF-8")
+        # --- LÓGICA DE DECODIFICAÇÃO ROBUSTA ---
+        file_bytes = file.stream.read()
+        try:
+            # 1. Tenta descodificar como UTF-8 (o padrão)
+            stream_content = file_bytes.decode("UTF-8")
+        except UnicodeDecodeError:
+            # 2. Se o UTF-8 falhar, tenta como Latin-1 (comum em CSVs do Excel no Windows)
+            print("Descodificação UTF-8 falhou. A tentar Latin-1 como alternativa.")
+            stream_content = file_bytes.decode("latin-1")
+        
         stream = io.StringIO(stream_content, newline=None)
+        # --- FIM DA LÓGICA DE DECODIFICAÇÃO ---
+
         header = stream.readline()
         stream.seek(0)
         delimiter = ';' if ';' in header else ','
@@ -249,8 +286,8 @@ def importar_produtos_csv():
                 nome = linha.get('nome', '').strip()
                 preco_str = linha.get('preco', '0').strip()
 
-                if not codigo or not nome or not preco:
-                    erros.append(f"Linha {linha_num}: Campos obrigatórios (codigo, nome, preco) em falta.")
+                if not codigo or not nome:
+                    erros.append(f"Linha {linha_num}: Campos obrigatórios (codigo, nome) em falta.")
                     continue
 
                 produto_existente = Produto.query.filter_by(codigo=codigo).first()
@@ -261,7 +298,7 @@ def importar_produtos_csv():
                 novo_produto = Produto(
                     codigo=codigo,
                     nome=nome,
-                    preco=preco.replace(',', '.'),
+                    preco=preco_str.replace(',', '.') if preco_str else '0.00',
                     descricao=linha.get('descricao', '').strip()
                 )
 
@@ -276,23 +313,18 @@ def importar_produtos_csv():
                     novo_produto.naturezas.extend(naturezas_db)
 
                 db.session.add(novo_produto)
-                
-                # --- LÓGICA DA ENTRADA INICIAL DE ESTOQUE ---
-                # Forçamos o SQLAlchemy a enviar o INSERT do produto para o banco,
-                # o que nos dá acesso ao seu ID para a movimentação, sem finalizar a transação.
                 db.session.flush()
 
                 quantidade_inicial_str = linha.get('quantidade', '0').strip()
                 if quantidade_inicial_str and int(quantidade_inicial_str) > 0:
                     movimentacao_inicial = MovimentacaoEstoque(
-                        id_produto=novo_produto.id_produto, # Usa o ID do produto recém-criado
+                        id_produto=novo_produto.id_produto,
                         id_usuario=id_usuario_logado,
                         quantidade=int(quantidade_inicial_str),
                         tipo='Entrada',
                         motivo_saida='Balanço Inicial via Importação'
                     )
                     db.session.add(movimentacao_inicial)
-                # --- FIM DA LÓGICA DE ENTRADA ---
                 
                 sucesso_count += 1
 
@@ -314,6 +346,52 @@ def importar_produtos_csv():
 
 
 
+
+@app.route('/api/formularios/produto_data', methods=['GET'])
+@jwt_required()
+def get_form_produto_data():
+    """Retorna todos os dados necessários para o formulário de produto de uma só vez, de forma otimizada."""
+    try:
+        produto_id = request.args.get('produto_id', type=int)
+        
+        # --- OTIMIZAÇÃO 1: Usar 'with_entities' para buscar apenas os dados necessários ---
+        # Em vez de carregar os objetos SQLAlchemy completos, buscamos apenas os IDs e nomes.
+        # Isto é muito mais rápido e leve.
+        fornecedores_data = db.session.query(Fornecedor.id_fornecedor, Fornecedor.nome).order_by(Fornecedor.nome).all()
+        naturezas_data = db.session.query(Natureza.id_natureza, Natureza.nome).order_by(Natureza.nome).all()
+        
+        dados_produto = None
+        if produto_id:
+            # A correção de performance com joinedload continua a ser a melhor abordagem aqui.
+            produto = Produto.query.options(
+                joinedload(Produto.fornecedores),
+                joinedload(Produto.naturezas)
+            ).get(produto_id)
+            
+            if produto:
+                dados_produto = {
+                    'id': produto.id_produto,
+                    'nome': produto.nome,
+                    'codigo': produto.codigo.strip() if produto.codigo else '',
+                    'descricao': produto.descricao,
+                    'preco': str(produto.preco),
+                    'codigoB': produto.codigoB,
+                    'codigoC': produto.codigoC,
+                    'fornecedores': [{'id': f.id_fornecedor} for f in produto.fornecedores],
+                    'naturezas': [{'id': n.id_natureza} for n in produto.naturezas]
+                }
+
+        # --- OTIMIZAÇÃO 2: Construir os dicionários a partir dos dados mais leves ---
+        response_data = {
+            'fornecedores': [{'id': id, 'nome': nome} for id, nome in fornecedores_data],
+            'naturezas': [{'id': id, 'nome': nome} for id, nome in naturezas_data],
+            'produto': dados_produto
+        }
+        
+        return jsonify(response_data), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
 @app.route('/api/produtos/<int:id_produto>', methods=['GET', 'PUT', 'DELETE'])
 @jwt_required()
 def produto_por_id_endpoint(id_produto):
@@ -322,14 +400,12 @@ def produto_por_id_endpoint(id_produto):
         produto = Produto.query.get_or_404(id_produto)
 
         if request.method == 'GET':
+            # ... (a lógica do GET continua igual)
             produto_json = {
-                'id': produto.id_produto,
-                'nome': produto.nome,
-                'codigo': produto.codigo.strip(),
-                'descricao': produto.descricao,
-                'preco': str(produto.preco),
-                'codigoB': produto.codigoB,
-                'codigoC': produto.codigoC,
+                'id': produto.id_produto, 'nome': produto.nome,
+                'codigo': produto.codigo.strip() if produto.codigo else '',
+                'descricao': produto.descricao, 'preco': str(produto.preco),
+                'codigoB': produto.codigoB, 'codigoC': produto.codigoC,
                 'fornecedores': [{'id': f.id_fornecedor, 'nome': f.nome} for f in produto.fornecedores],
                 'naturezas': [{'id': n.id_natureza, 'nome': n.nome} for n in produto.naturezas]
             }
@@ -338,7 +414,6 @@ def produto_por_id_endpoint(id_produto):
         elif request.method == 'PUT':
             dados = request.get_json()
             
-            # Atualiza os campos diretos do produto
             produto.nome = dados['nome']
             produto.codigo = dados['codigo']
             produto.descricao = dados.get('descricao')
@@ -346,25 +421,47 @@ def produto_por_id_endpoint(id_produto):
             produto.codigoB = dados.get('codigoB')
             produto.codigoC = dados.get('codigoC')
 
-            # --- LÓGICA DE SINCRONIZAÇÃO DE ASSOCIAÇÕES ---
             if 'fornecedores_ids' in dados:
-                produto.fornecedores.clear() # Limpa as associações antigas
+                produto.fornecedores.clear()
                 ids_fornecedores = dados['fornecedores_ids']
                 if ids_fornecedores:
                     novos_fornecedores = Fornecedor.query.filter(Fornecedor.id_fornecedor.in_(ids_fornecedores)).all()
-                    produto.fornecedores = novos_fornecedores # Adiciona as novas
+                    produto.fornecedores = novos_fornecedores
 
             if 'naturezas_ids' in dados:
-                produto.naturezas.clear() # Limpa as associações antigas
+                produto.naturezas.clear()
                 ids_naturezas = dados['naturezas_ids']
                 if ids_naturezas:
                     novas_naturezas = Natureza.query.filter(Natureza.id_natureza.in_(ids_naturezas)).all()
-                    produto.naturezas = novas_naturezas # Adiciona as novas
+                    produto.naturezas = novas_naturezas
 
             db.session.commit()
-            return jsonify({'mensagem': 'Produto atualizado com sucesso!'}), 200
+
+            # --- A MUDANÇA CRUCIAL ESTÁ AQUI ---
+            # Após salvar, buscamos os dados atualizados e os devolvemos para o front-end.
+            updated_product = Produto.query.options(
+                joinedload(Produto.fornecedores),
+                joinedload(Produto.naturezas)
+            ).get(id_produto)
+
+            fornecedores_str = ", ".join(sorted([f.nome for f in updated_product.fornecedores]))
+            naturezas_str = ", ".join(sorted([n.nome for n in updated_product.naturezas]))
+
+            response_data = {
+                'id': updated_product.id_produto,
+                'nome': updated_product.nome,
+                'codigo': updated_product.codigo.strip() if updated_product.codigo else '',
+                'descricao': updated_product.descricao,
+                'preco': str(updated_product.preco),
+                'codigoB': updated_product.codigoB,
+                'codigoC': updated_product.codigoC,
+                'fornecedores': fornecedores_str,
+                'naturezas': naturezas_str
+            }
+            return jsonify(response_data), 200 # Devolve os dados atualizados
         
         elif request.method == 'DELETE':
+            # ... (a lógica do DELETE continua igual)
             movimentacao_existente = MovimentacaoEstoque.query.filter_by(id_produto=id_produto).first()
             if movimentacao_existente:
                 return jsonify({'erro': 'Este produto não pode ser excluído, pois possui um histórico de movimentações no estoque.'}), 400
@@ -376,6 +473,8 @@ def produto_por_id_endpoint(id_produto):
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
+    
+    
 # --- ROTA PARA BUSCAR UM PRODUTO PELO CÓDIGO ---
 @app.route('/api/produtos/codigo/<string:codigo>', methods=['GET'])
 @jwt_required()
