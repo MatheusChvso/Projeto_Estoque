@@ -2018,7 +2018,7 @@ class JanelaPrincipal(QMainWindow):
         QMessageBox.about(self, 
             "Sobre o Sistema de Gestão de Estoque",
             """
-            <b>Sistema de Gestão de Estoque v1.1</b>
+            <b>Sistema de Gestão de Estoque v1.14</b>
             <p>Desenvolvido para controle de estoque na Szm.</p>
             <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
             <p>Agradecimentos especiais a Mathias pela colaboração e testes.</p>
