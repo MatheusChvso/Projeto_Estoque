@@ -217,3 +217,21 @@ QPushButton#btnDashboardAction:hover {
     color: #0078d7;
     border: 1px solid #0078d7;
 }
+
+/* ============================================= */
+/* ESTILO PARA O BOTÃO DE GERAR ETIQUETAS        */
+/* ============================================= */
+
+QPushButton#btnPrint {
+    background-color: #f0ad4e; /* Laranja/Amarelo para uma ação secundária */
+    color: white;
+    font-weight: bold;
+}
+
+QPushButton#btnPrint:hover {
+    background-color: #eea236;
+}
+
+QPushButton#btnPrint:pressed {
+    background-color: #ec971f;
+}

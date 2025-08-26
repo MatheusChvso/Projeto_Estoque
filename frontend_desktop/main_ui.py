@@ -630,7 +630,7 @@ class InventarioWidget(QWidget):
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.dados_exibidos = []
-        self.sort_qtd_desc = True # Controla a direção da ordenação por quantidade
+        self.sort_qtd_desc = True
 
         # --- Título ---
         self.titulo = QLabel("Inventário Completo")
@@ -650,9 +650,14 @@ class InventarioWidget(QWidget):
         self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
         self.btn_excluir.setObjectName("btnNegative")
         
+        # --- NOVO BOTÃO DE ETIQUETAS ---
+        self.btn_gerar_etiquetas = QPushButton("🖨️ Gerar Etiquetas")
+        self.btn_gerar_etiquetas.setObjectName("btnPrint") # Nome para o estilo
+
         controles_layout_2.addWidget(self.btn_adicionar)
         controles_layout_2.addWidget(self.btn_editar)
         controles_layout_2.addWidget(self.btn_excluir)
+        controles_layout_2.addWidget(self.btn_gerar_etiquetas) # Adicionado ao layout
         controles_layout_2.addStretch(1)
 
         # Botões de Ordenação
@@ -668,6 +673,8 @@ class InventarioWidget(QWidget):
 
         # --- Tabela de Inventário ---
         self.tabela_inventario = QTableWidget()
+        # --- ALTERAÇÃO: Permite a seleção de múltiplas linhas ---
+        self.tabela_inventario.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.tabela_inventario.setColumnCount(7)
         self.tabela_inventario.setHorizontalHeaderLabels([
             "Código", "Nome do Produto", "Descrição", "Saldo", "Preço (R$)", "Código B", "Código C"
@@ -697,18 +704,73 @@ class InventarioWidget(QWidget):
         self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
         self.btn_editar.clicked.connect(self.abrir_formulario_editar)
         self.btn_excluir.clicked.connect(self.excluir_produto_selecionado)
+        self.btn_gerar_etiquetas.clicked.connect(self.gerar_etiquetas_selecionadas) # Nova conexão
         self.btn_ordenar_nome.clicked.connect(self.ordenar_por_nome)
         self.btn_ordenar_qtd.clicked.connect(self.ordenar_por_quantidade)
 
         # --- Carga Inicial ---
         self.carregar_dados_inventario()
 
+    # --- NOVO MÉTODO PARA GERAR ETIQUETAS ---
+    def gerar_etiquetas_selecionadas(self):
+        # Pega os índices das linhas selecionadas
+        selected_rows = self.tabela_inventario.selectionModel().selectedRows()
+        
+        if not selected_rows:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um ou mais produtos na tabela para gerar as etiquetas.")
+            return
+
+        # Extrai os IDs dos produtos das linhas selecionadas
+        product_ids = []
+        for index in selected_rows:
+            item = self.tabela_inventario.item(index.row(), 0)
+            if item and item.data(Qt.UserRole):
+                product_ids.append(item.data(Qt.UserRole))
+
+        if not product_ids:
+            QMessageBox.warning(self, "Erro", "Não foi possível obter os IDs dos produtos selecionados.")
+            return
+
+        # Abre a janela para o utilizador escolher onde salvar
+        caminho_salvar, _ = QFileDialog.getSaveFileName(self, "Salvar Ficheiro de Etiquetas", "etiquetas.pdf", "Ficheiros PDF (*.pdf)")
+
+        if not caminho_salvar:
+            return # Utilizador cancelou
+
+        global access_token
+        url = f"{API_BASE_URL}/api/produtos/etiquetas"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        dados = {'product_ids': product_ids}
+
+        try:
+            # Mostra uma mensagem de "Aguarde"
+            msg_box = QMessageBox(QMessageBox.Icon.Information, "Aguarde", "A gerar o ficheiro de etiquetas...", buttons=QMessageBox.StandardButton.NoButton, parent=self)
+            msg_box.show()
+            QApplication.processEvents()
+
+            response = requests.post(url, headers=headers, json=dados, stream=True)
+            
+            msg_box.close() # Fecha a mensagem de "Aguarde"
+
+            if response and response.status_code == 200:
+                with open(caminho_salvar, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                QMessageBox.information(self, "Sucesso", f"Ficheiro de etiquetas salvo com sucesso em:\n{caminho_salvar}")
+            else:
+                erro = response.json().get('erro', 'Erro desconhecido.')
+                QMessageBox.warning(self, "Erro na API", f"Não foi possível gerar as etiquetas: {erro}")
+
+        except requests.exceptions.RequestException as e:
+            msg_box.close()
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+    # O resto dos seus métodos (iniciar_busca_timer, carregar_dados_inventario, etc.) continua aqui
     def iniciar_busca_timer(self):
         self.search_timer.stop()
         self.search_timer.start(300)
 
     def carregar_dados_inventario(self):
-        """Busca os dados da API, aplicando o filtro de busca se houver."""
         global access_token
         params = {}
         termo_busca = self.input_pesquisa.text()
@@ -729,7 +791,6 @@ class InventarioWidget(QWidget):
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
     def popular_tabela(self, dados):
-        """Limpa e preenche a tabela com os dados fornecidos."""
         self.tabela_inventario.setRowCount(0)
         self.tabela_inventario.setRowCount(len(dados))
         
@@ -759,8 +820,6 @@ class InventarioWidget(QWidget):
         self.popular_tabela(self.dados_exibidos)
 
     def ordenar_por_quantidade(self):
-        # --- A CORREÇÃO ESTÁ AQUI ---
-        # Convertemos o 'saldo_atual' para inteiro (int) apenas para a ordenação.
         self.dados_exibidos.sort(key=lambda item: int(item['saldo_atual']), reverse=self.sort_qtd_desc)
         self.sort_qtd_desc = not self.sort_qtd_desc
         self.popular_tabela(self.dados_exibidos)
@@ -784,7 +843,6 @@ class InventarioWidget(QWidget):
         dialog.exec()
 
     def atualizar_linha_produto(self, linha, dados_produto):
-        """Atualiza uma única linha na tabela com os novos dados."""
         saldo_antigo = self.tabela_inventario.item(linha, 3).text()
 
         item_codigo = QTableWidgetItem(dados_produto['codigo'])
