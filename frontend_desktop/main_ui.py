@@ -1949,10 +1949,12 @@ class JanelaPrincipal(QMainWindow):
         
             self.dados_usuario = {}
         
+            # --- ÁREA DE CONTEÚDO ---
             self.stacked_widget = QStackedWidget()
             self.stacked_widget.setObjectName("mainContentArea")
+            
             self.tela_dashboard = DashboardWidget()
-            self.tela_gestao_estoque = GestaoEstoqueWidget()
+            self.tela_gestao_estoque = GestaoEstoqueWidget() # <-- NOVA TELA UNIFICADA
             self.tela_entrada_rapida = EntradaRapidaWidget()
             self.tela_saida_rapida = SaidaRapidaWidget()
             self.tela_relatorios = RelatoriosWidget()
@@ -1962,7 +1964,7 @@ class JanelaPrincipal(QMainWindow):
             self.tela_importacao = ImportacaoWidget()
 
             self.stacked_widget.addWidget(self.tela_dashboard)
-            self.stacked_widget.addWidget(self.tela_gestao_estoque)
+            self.stacked_widget.addWidget(self.tela_gestao_estoque) # <-- ADICIONADA
             self.stacked_widget.addWidget(self.tela_entrada_rapida)
             self.stacked_widget.addWidget(self.tela_saida_rapida)
             self.stacked_widget.addWidget(self.tela_relatorios)
@@ -1970,6 +1972,7 @@ class JanelaPrincipal(QMainWindow):
             self.stacked_widget.addWidget(self.tela_naturezas)
             self.stacked_widget.addWidget(self.tela_importacao)
         
+            # --- BARRA DE MENUS ---
             menu_bar = self.menuBar()
             
             menu_arquivo = menu_bar.addMenu("&Arquivo")
@@ -1987,9 +1990,9 @@ class JanelaPrincipal(QMainWindow):
             menu_arquivo.addAction(acao_sair)
 
             self.menu_cadastros = menu_bar.addMenu("&Cadastros")
-            self.acao_produtos = QAction("Produtos...", self)
+            self.acao_produtos = QAction("Inventário...", self) # Texto do menu atualizado
             self.acao_produtos.setShortcut("Ctrl+P")
-            self.acao_produtos.triggered.connect(self.mostrar_tela_produtos)
+            self.acao_produtos.triggered.connect(self.mostrar_tela_gestao_estoque) # Conecta à nova tela
             self.menu_cadastros.addAction(self.acao_produtos)
             self.acao_fornecedores = QAction("Fornecedores...", self)
             self.acao_fornecedores.setShortcut("Ctrl+F")
@@ -2016,11 +2019,11 @@ class JanelaPrincipal(QMainWindow):
             acao_saida.triggered.connect(self.mostrar_tela_saida_rapida)
             menu_operacoes.addAction(acao_saida)
             menu_operacoes.addSeparator()
-            acao_saldos = QAction("Consultar Saldos...", self)
-            acao_saldos.triggered.connect(self.mostrar_tela_estoque)
+            acao_saldos = QAction("Consultar Inventário...", self) # Texto atualizado
+            acao_saldos.triggered.connect(self.mostrar_tela_gestao_estoque) # Conecta à nova tela
             menu_operacoes.addAction(acao_saldos)
             acao_historico = QAction("Ver Histórico de Movimentações...", self)
-            acao_historico.triggered.connect(lambda: (self.mostrar_tela_estoque(), self.tela_estoque.mostrar_historico()))
+            acao_historico.triggered.connect(lambda: (self.mostrar_tela_gestao_estoque(), self.tela_gestao_estoque.mostrar_historico()))
             menu_operacoes.addAction(acao_historico)
 
             menu_relatorios = menu_bar.addMenu("&Relatórios")
@@ -2033,10 +2036,12 @@ class JanelaPrincipal(QMainWindow):
             acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
             menu_ajuda.addAction(acao_sobre)
 
+            # --- LAYOUT GERAL ---
             widget_central = QWidget()
             self.setCentralWidget(widget_central)
             layout_principal = QHBoxLayout(widget_central)
 
+            # --- PAINEL LATERAL ---
             painel_lateral = QWidget()
             painel_lateral.setObjectName("painelLateral")
             painel_lateral.setFixedWidth(220)
@@ -2044,7 +2049,7 @@ class JanelaPrincipal(QMainWindow):
             self.layout_painel_lateral.setAlignment(Qt.AlignTop)
 
             self.btn_dashboard = QPushButton("🏠 Dashboard")
-            self.btn_inventario = QPushButton("📦 Inventário")
+            self.btn_inventario = QPushButton("📦 Inventário") # <-- NOVO BOTÃO
             self.btn_entrada_rapida = QPushButton("➡️ Entrada Rápida")
             self.btn_saida_rapida = QPushButton("⬅️ Saída Rápida")
             self.btn_relatorios = QPushButton("📄 Relatórios")
@@ -2055,7 +2060,7 @@ class JanelaPrincipal(QMainWindow):
             self.btn_logoff.setObjectName("btnLogoff")
 
             self.layout_painel_lateral.addWidget(self.btn_dashboard)
-            self.layout_painel_lateral.addWidget(self.btn_inventario)   
+            self.layout_painel_lateral.addWidget(self.btn_inventario) # <-- ADICIONADO
             self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
             self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
             self.layout_painel_lateral.addWidget(self.btn_relatorios)
@@ -2067,8 +2072,9 @@ class JanelaPrincipal(QMainWindow):
             layout_principal.addWidget(painel_lateral)
             layout_principal.addWidget(self.stacked_widget)
 
+            # --- CONEXÕES ---
             self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
-            self.btn_inventario.clicked.connect(self.mostrar_tela_gestao_estoque)
+            self.btn_inventario.clicked.connect(self.mostrar_tela_gestao_estoque) # <-- CONEXÃO ATUALIZADA
             self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
             self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
             self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
@@ -2076,17 +2082,28 @@ class JanelaPrincipal(QMainWindow):
             self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
             self.btn_logoff.clicked.connect(self.logoff_requested.emit)
             
-            
+            # Conexões de sinais entre widgets
+            self.tela_dashboard.ir_para_produtos.connect(self.mostrar_tela_gestao_estoque) # <-- CONEXÃO ATUALIZADA
             self.tela_dashboard.ir_para_fornecedores.connect(self.mostrar_tela_fornecedores)
             self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
             self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
+            self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
+            self.tela_saida_rapida.estoque_atualizado.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             self.tela_importacao.produtos_importados_sucesso.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
-            self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
-            self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
             signal_handler.fornecedores_atualizados.connect(self.tela_fornecedores.carregar_fornecedores)
             signal_handler.naturezas_atualizadas.connect(self.tela_naturezas.carregar_naturezas)
 
             self.statusBar().showMessage("Pronto.")
+
+        except Exception as e:
+            error_log_path = os.path.join(os.path.expanduser("~"), "Desktop", "crash_log.txt")
+            with open(error_log_path, "w", encoding="utf-8") as f:
+                f.write(f"Ocorreu um erro crítico ao iniciar a janela principal:\n\n")
+                f.write(f"{e}\n\n")
+                f.write(traceback.format_exc())
+            QMessageBox.critical(self, "Erro de Inicialização", f"Ocorreu um erro crítico. Verifique o ficheiro 'crash_log.txt' no seu Ambiente de Trabalho.")
+            sys.exit(1)
+
 
         except Exception as e:
             error_log_path = os.path.join(os.path.expanduser("~"), "Desktop", "crash_log.txt")
@@ -2160,6 +2177,12 @@ class JanelaPrincipal(QMainWindow):
     
     def mostrar_tela_importacao(self):
         self.stacked_widget.setCurrentWidget(self.tela_importacao)
+        
+    def mostrar_tela_gestao_estoque(self):
+        """Mostra a nova tela unificada de gestão de estoque."""
+        self.stacked_widget.setCurrentWidget(self.tela_gestao_estoque)
+        # Garante que a aplicação abre sempre na aba de inventário por defeito
+        self.tela_gestao_estoque.mostrar_inventario()
 
 class InteractiveKPICard(QFrame):
     clicked = Signal()
