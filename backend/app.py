@@ -19,6 +19,13 @@ from sqlalchemy.sql import func
 import csv
 import io
 from sqlalchemy.orm import joinedload
+import barcode
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.graphics.barcode import code128
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -1079,7 +1086,47 @@ def usuario_por_id_endpoint(id_usuario):
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
     
-    
+
+
+
+@app.route('/api/usuario/mudar-senha', methods=['POST'])
+@jwt_required()
+def mudar_senha_usuario():
+    """Permite que o utilizador logado altere a sua própria senha."""
+    try:
+        # 1. Identifica o utilizador a partir do token
+        id_usuario_logado = get_jwt_identity()
+        usuario = Usuario.query.get(id_usuario_logado)
+        if not usuario:
+            return jsonify({"erro": "Utilizador não encontrado"}), 404
+
+        dados = request.get_json()
+        senha_atual = dados.get('senha_atual')
+        nova_senha = dados.get('nova_senha')
+        confirmacao_nova_senha = dados.get('confirmacao_nova_senha')
+
+        # 2. Validações de segurança
+        if not senha_atual or not nova_senha or not confirmacao_nova_senha:
+            return jsonify({'erro': 'Todos os campos são obrigatórios.'}), 400
+
+        if not usuario.check_password(senha_atual):
+            return jsonify({'erro': 'A senha atual está incorreta.'}), 401 # 401 Unauthorized
+
+        if nova_senha != confirmacao_nova_senha:
+            return jsonify({'erro': 'A nova senha e a confirmação não correspondem.'}), 400
+            
+        if len(nova_senha) < 6: # Exemplo de uma regra de complexidade mínima
+            return jsonify({'erro': 'A nova senha deve ter pelo menos 6 caracteres.'}), 400
+
+        # 3. Se tudo estiver correto, altera a senha
+        usuario.set_password(nova_senha)
+        db.session.commit()
+
+        return jsonify({'mensagem': 'Senha alterada com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500    
     
 # ==============================================================================
 #          ROTAS DA API PARA DASHBOARD E OUTRAS FUNÇÕES
@@ -1147,6 +1194,47 @@ from datetime import datetime
 # --- FUNÇÕES AUXILIARES PARA GERAR ARQUIVOS ---
 
 # Substitua a sua função gerar_inventario_pdf por esta versão corrigida
+
+
+def gerar_pdf_etiquetas(produtos):
+    """
+    Gera um PDF com etiquetas de 100mm x 62mm (horizontal) para os produtos fornecidos, sem o preço.
+    """
+    buffer = io.BytesIO()
+    
+    # --- ALTERAÇÃO 1: Invertemos a largura e a altura para a orientação paisagem ---
+    largura_etiqueta, altura_etiqueta = 100 * mm, 62 * mm
+    doc = SimpleDocTemplate(buffer, pagesize=(largura_etiqueta, altura_etiqueta),
+                            leftMargin=5*mm, rightMargin=5*mm, topMargin=5*mm, bottomMargin=5*mm)
+    
+    elementos = []
+    styles = getSampleStyleSheet()
+    # Ajusta o tamanho da fonte para caber melhor na etiqueta
+    styles['Normal'].fontSize = 12
+    styles['Normal'].leading = 14 # Espaçamento entre linhas
+    
+    for produto in produtos:
+        # Informações do Produto
+        nome_produto = Paragraph(f"<b>{produto.nome}</b>", styles['Normal'])
+        
+        # Geração do Código de Barras
+        codigo_de_barras = code128.Code128(produto.codigo, barHeight=20*mm, barWidth=0.5*mm)
+        
+        # --- ALTERAÇÃO 2: Removemos o preço da lista de elementos ---
+        elementos.append(nome_produto)
+        elementos.append(Spacer(1, 8 * mm))
+        elementos.append(codigo_de_barras)
+        
+        elementos.append(PageBreak())
+
+    # Remove a última quebra de página desnecessária
+    if elementos:
+        elementos.pop()
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer
+
 
 def gerar_inventario_pdf(dados):
     """Gera um PDF do relatório de inventário atual."""
@@ -1363,6 +1451,37 @@ def relatorio_movimentacoes():
         return send_file(pdf_buffer, download_name="relatorio_movimentacoes.pdf", as_attachment=True)
     
     
+@app.route('/api/produtos/etiquetas', methods=['POST'])
+@jwt_required()
+def gerar_etiquetas_produtos():
+    """
+    Recebe uma lista de IDs de produtos e gera um PDF com as etiquetas correspondentes.
+    """
+    try:
+        dados = request.get_json()
+        if not dados or 'product_ids' not in dados:
+            return jsonify({'erro': 'Lista de IDs de produtos em falta.'}), 400
+
+        product_ids = dados['product_ids']
+        
+        # Busca os produtos no banco de dados com base nos IDs recebidos
+        produtos_para_etiqueta = Produto.query.filter(Produto.id_produto.in_(product_ids)).all()
+        
+        if not produtos_para_etiqueta:
+            return jsonify({'erro': 'Nenhum produto encontrado com os IDs fornecidos.'}), 404
+
+        # Chama a função auxiliar para gerar o PDF
+        pdf_buffer = gerar_pdf_etiquetas(produtos_para_etiqueta)
+        
+        return send_file(
+            pdf_buffer,
+            as_attachment=True,
+            download_name="etiquetas.pdf",
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
 # ==============================================================================
 # MÓDULO DE RELATÓRIOS (ADICIONE NO FINAL DO SEU app.py)
 # ==============================================================================
