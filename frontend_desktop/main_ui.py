@@ -546,6 +546,76 @@ class FormularioUsuarioDialog(QDialog):
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar o usuário: {e}")
 
+class MudarSenhaDialog(QDialog):
+    """Janela de formulário para o utilizador alterar a sua própria senha."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Alterar Minha Senha")
+        self.setMinimumWidth(350)
+
+        self.layout = QFormLayout(self)
+        self.layout.setSpacing(15)
+
+        # --- Campos de Entrada ---
+        self.input_senha_atual = QLineEdit()
+        self.input_senha_atual.setEchoMode(QLineEdit.EchoMode.Password)
+        
+        self.input_nova_senha = QLineEdit()
+        self.input_nova_senha.setEchoMode(QLineEdit.EchoMode.Password)
+        
+        self.input_confirmacao = QLineEdit()
+        self.input_confirmacao.setEchoMode(QLineEdit.EchoMode.Password)
+
+        self.layout.addRow("Senha Atual:", self.input_senha_atual)
+        self.layout.addRow("Nova Senha:", self.input_nova_senha)
+        self.layout.addRow("Confirmar Nova Senha:", self.input_confirmacao)
+
+        # --- Botões ---
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        self.layout.addWidget(self.botoes)
+
+        # --- Conexões ---
+        self.botoes.accepted.connect(self.accept)
+        self.botoes.rejected.connect(self.reject)
+        # Permite submeter com Enter no último campo
+        self.input_confirmacao.returnPressed.connect(self.accept)
+
+    def accept(self):
+        """Valida os dados e envia o pedido à API."""
+        senha_atual = self.input_senha_atual.text()
+        nova_senha = self.input_nova_senha.text()
+        confirmacao = self.input_confirmacao.text()
+
+        # Validação no front-end
+        if not senha_atual or not nova_senha or not confirmacao:
+            QMessageBox.warning(self, "Campos Vazios", "Todos os campos são obrigatórios.")
+            return
+
+        if nova_senha != confirmacao:
+            QMessageBox.warning(self, "Erro", "A nova senha e a confirmação não correspondem.")
+            return
+            
+        global access_token
+        url = f"{API_BASE_URL}/api/usuario/mudar-senha"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        dados = {
+            "senha_atual": senha_atual,
+            "nova_senha": nova_senha,
+            "confirmacao_nova_senha": confirmacao
+        }
+
+        try:
+            response = requests.post(url, headers=headers, json=dados)
+            if response and response.status_code == 200:
+                QMessageBox.information(self, "Sucesso", "Senha alterada com sucesso!")
+                super().accept() # Fecha o diálogo
+            else:
+                erro = response.json().get('erro', 'Ocorreu um erro desconhecido.')
+                QMessageBox.warning(self, "Falha na Alteração", erro)
+
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
@@ -1982,6 +2052,10 @@ class JanelaPrincipal(QMainWindow):
             acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
             menu_arquivo.addAction(acao_dashboard)
             menu_arquivo.addSeparator()
+            self.acao_mudar_senha = QAction("Alterar Minha Senha...", self)
+            self.acao_mudar_senha.triggered.connect(self.abrir_dialogo_mudar_senha)
+            menu_arquivo.addAction(self.acao_mudar_senha)
+            menu_arquivo.addSeparator()
             acao_logoff = QAction("Fazer Logoff", self)
             acao_logoff.triggered.connect(self.logoff_requested.emit)
             menu_arquivo.addAction(acao_logoff)
@@ -2184,6 +2258,12 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.tela_gestao_estoque)
         # Garante que a aplicação abre sempre na aba de inventário por defeito
         self.tela_gestao_estoque.mostrar_inventario()
+        
+    def abrir_dialogo_mudar_senha(self):
+        """Abre a janela de diálogo para alteração de senha."""
+        dialog = MudarSenhaDialog(self)
+        dialog.exec()
+
 
 class InteractiveKPICard(QFrame):
     clicked = Signal()

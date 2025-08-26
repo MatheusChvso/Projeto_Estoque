@@ -1079,7 +1079,47 @@ def usuario_por_id_endpoint(id_usuario):
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
     
-    
+
+
+
+@app.route('/api/usuario/mudar-senha', methods=['POST'])
+@jwt_required()
+def mudar_senha_usuario():
+    """Permite que o utilizador logado altere a sua própria senha."""
+    try:
+        # 1. Identifica o utilizador a partir do token
+        id_usuario_logado = get_jwt_identity()
+        usuario = Usuario.query.get(id_usuario_logado)
+        if not usuario:
+            return jsonify({"erro": "Utilizador não encontrado"}), 404
+
+        dados = request.get_json()
+        senha_atual = dados.get('senha_atual')
+        nova_senha = dados.get('nova_senha')
+        confirmacao_nova_senha = dados.get('confirmacao_nova_senha')
+
+        # 2. Validações de segurança
+        if not senha_atual or not nova_senha or not confirmacao_nova_senha:
+            return jsonify({'erro': 'Todos os campos são obrigatórios.'}), 400
+
+        if not usuario.check_password(senha_atual):
+            return jsonify({'erro': 'A senha atual está incorreta.'}), 401 # 401 Unauthorized
+
+        if nova_senha != confirmacao_nova_senha:
+            return jsonify({'erro': 'A nova senha e a confirmação não correspondem.'}), 400
+            
+        if len(nova_senha) < 6: # Exemplo de uma regra de complexidade mínima
+            return jsonify({'erro': 'A nova senha deve ter pelo menos 6 caracteres.'}), 400
+
+        # 3. Se tudo estiver correto, altera a senha
+        usuario.set_password(nova_senha)
+        db.session.commit()
+
+        return jsonify({'mensagem': 'Senha alterada com sucesso!'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'erro': str(e)}), 500    
     
 # ==============================================================================
 #          ROTAS DA API PARA DASHBOARD E OUTRAS FUNÇÕES
