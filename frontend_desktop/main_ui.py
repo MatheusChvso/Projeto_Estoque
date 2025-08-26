@@ -550,6 +550,265 @@ class FormularioUsuarioDialog(QDialog):
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
 
+
+
+class InventarioWidget(QWidget):
+    """A nova tela unificada para visualização e gestão do inventário."""
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.dados_exibidos = []
+        self.sort_qtd_desc = True # Controla a direção da ordenação por quantidade
+
+        # --- Título ---
+        self.titulo = QLabel("Inventário Completo")
+        self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
+
+        # --- Layout de Controles ---
+        controles_layout_1 = QHBoxLayout()
+        self.input_pesquisa = QLineEdit()
+        self.input_pesquisa.setPlaceholderText("Buscar por Nome ou Códigos (A, B ou C)...")
+        controles_layout_1.addWidget(self.input_pesquisa)
+
+        controles_layout_2 = QHBoxLayout()
+        self.btn_adicionar = QPushButton("➕ Adicionar Novo")
+        self.btn_adicionar.setObjectName("btnPositive")
+        self.btn_editar = QPushButton("✏️ Editar Selecionado")
+        self.btn_editar.setObjectName("btnNeutral")
+        self.btn_excluir = QPushButton("🗑️ Excluir Selecionado")
+        self.btn_excluir.setObjectName("btnNegative")
+        
+        controles_layout_2.addWidget(self.btn_adicionar)
+        controles_layout_2.addWidget(self.btn_editar)
+        controles_layout_2.addWidget(self.btn_excluir)
+        controles_layout_2.addStretch(1)
+
+        # Botões de Ordenação
+        self.btn_ordenar_nome = QPushButton("🔤 A-Z")
+        self.btn_ordenar_nome.setToolTip("Ordenar por Nome do Produto")
+        self.btn_ordenar_nome.setObjectName("btnIcon")
+        self.btn_ordenar_qtd = QPushButton("📦 Qtd.")
+        self.btn_ordenar_qtd.setToolTip("Ordenar por Saldo em Estoque")
+        self.btn_ordenar_qtd.setObjectName("btnIcon")
+        
+        controles_layout_2.addWidget(self.btn_ordenar_nome)
+        controles_layout_2.addWidget(self.btn_ordenar_qtd)
+
+        # --- Tabela de Inventário ---
+        self.tabela_inventario = QTableWidget()
+        self.tabela_inventario.setColumnCount(7)
+        self.tabela_inventario.setHorizontalHeaderLabels([
+            "Código", "Nome do Produto", "Descrição", "Saldo", "Preço (R$)", "Código B", "Código C"
+        ])
+        self.tabela_inventario.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.tabela_inventario.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tabela_inventario.setAlternatingRowColors(True)
+        self.tabela_inventario.setWordWrap(True) # Ativa a quebra de linha
+
+        header = self.tabela_inventario.horizontalHeader()
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch) # Nome
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) # Descrição
+
+        # --- Adicionando Widgets ao Layout Principal ---
+        self.layout.addWidget(self.titulo)
+        self.layout.addLayout(controles_layout_1)
+        self.layout.addLayout(controles_layout_2)
+        self.layout.addWidget(self.tabela_inventario)
+
+        # --- Temporizador para a busca ---
+        self.search_timer = QTimer(self)
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self.carregar_dados_inventario)
+
+        # --- Conexões ---
+        self.input_pesquisa.textChanged.connect(self.iniciar_busca_timer)
+        self.btn_adicionar.clicked.connect(self.abrir_formulario_adicionar)
+        self.btn_editar.clicked.connect(self.abrir_formulario_editar)
+        self.btn_excluir.clicked.connect(self.excluir_produto_selecionado)
+        self.btn_ordenar_nome.clicked.connect(self.ordenar_por_nome)
+        self.btn_ordenar_qtd.clicked.connect(self.ordenar_por_quantidade)
+
+        # --- Carga Inicial ---
+        self.carregar_dados_inventario()
+
+    def iniciar_busca_timer(self):
+        self.search_timer.stop()
+        self.search_timer.start(300)
+
+    def carregar_dados_inventario(self):
+        """Busca os dados da API, aplicando o filtro de busca se houver."""
+        global access_token
+        params = {}
+        termo_busca = self.input_pesquisa.text()
+        if termo_busca:
+            params['search'] = termo_busca
+
+        url = f"{API_BASE_URL}/api/estoque/saldos"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response and response.status_code == 200:
+                self.dados_exibidos = response.json()
+                self.popular_tabela(self.dados_exibidos)
+            else:
+                QMessageBox.warning(self, "Erro", "Não foi possível carregar os dados do inventário.")
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+    def popular_tabela(self, dados):
+        """Limpa e preenche a tabela com os dados fornecidos."""
+        self.tabela_inventario.setRowCount(0)
+        self.tabela_inventario.setRowCount(len(dados))
+        
+        for linha, item in enumerate(dados):
+            # Item da primeira coluna guarda o ID
+            item_codigo = QTableWidgetItem(item['codigo'])
+            item_codigo.setData(Qt.UserRole, item['id_produto'])
+            self.tabela_inventario.setItem(linha, 0, item_codigo)
+
+            self.tabela_inventario.setItem(linha, 1, QTableWidgetItem(item['nome']))
+            self.tabela_inventario.setItem(linha, 2, QTableWidgetItem(item.get('descricao', '')))
+            
+            saldo_item = QTableWidgetItem(str(item['saldo_atual']))
+            saldo_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.tabela_inventario.setItem(linha, 3, saldo_item)
+
+            preco_item = QTableWidgetItem(str(item.get('preco', '0.00')))
+            preco_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.tabela_inventario.setItem(linha, 4, preco_item)
+
+            self.tabela_inventario.setItem(linha, 5, QTableWidgetItem(item['codigoB']))
+            self.tabela_inventario.setItem(linha, 6, QTableWidgetItem(item['codigoC']))
+        
+        self.tabela_inventario.resizeRowsToContents() # Ajusta a altura das linhas para o texto
+
+    def ordenar_por_nome(self):
+        self.dados_exibidos.sort(key=lambda item: item['nome'].lower())
+        self.popular_tabela(self.dados_exibidos)
+
+    def ordenar_por_quantidade(self):
+        self.dados_exibidos.sort(key=lambda item: item['saldo_atual'], reverse=self.sort_qtd_desc)
+        self.sort_qtd_desc = not self.sort_qtd_desc # Inverte a direção para o próximo clique
+        self.popular_tabela(self.dados_exibidos)
+
+    def abrir_formulario_adicionar(self):
+        dialog = FormularioProdutoDialog(self)
+        if dialog.exec():
+            self.carregar_dados_inventario()
+
+    def abrir_formulario_editar(self):
+        linha_selecionada = self.tabela_inventario.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um produto para editar.")
+            return
+        
+        item = self.tabela_inventario.item(linha_selecionada, 0)
+        produto_id = item.data(Qt.UserRole)
+
+        dialog = FormularioProdutoDialog(self, produto_id=produto_id, row=linha_selecionada)
+        dialog.produto_atualizado.connect(self.atualizar_linha_produto)
+        dialog.exec()
+
+    def atualizar_linha_produto(self, linha, dados_produto):
+        """Atualiza uma única linha na tabela com os novos dados."""
+        # A API de edição não devolve o saldo, então precisamos de o buscar
+        saldo_antigo = self.tabela_inventario.item(linha, 3).text()
+
+        item_codigo = QTableWidgetItem(dados_produto['codigo'])
+        item_codigo.setData(Qt.UserRole, dados_produto['id'])
+        self.tabela_inventario.setItem(linha, 0, item_codigo)
+
+        self.tabela_inventario.setItem(linha, 1, QTableWidgetItem(dados_produto['nome']))
+        self.tabela_inventario.setItem(linha, 2, QTableWidgetItem(dados_produto['descricao']))
+        
+        saldo_item = QTableWidgetItem(saldo_antigo) # Mantém o saldo antigo para consistência visual
+        saldo_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tabela_inventario.setItem(linha, 3, saldo_item)
+
+        preco_item = QTableWidgetItem(dados_produto['preco'])
+        preco_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.tabela_inventario.setItem(linha, 4, preco_item)
+
+        self.tabela_inventario.setItem(linha, 5, QTableWidgetItem(dados_produto.get('codigoB', '')))
+        self.tabela_inventario.setItem(linha, 6, QTableWidgetItem(dados_produto.get('codigoC', '')))
+        self.tabela_inventario.resizeRowToContents(linha)
+
+    def excluir_produto_selecionado(self):
+        # Esta lógica é idêntica à da ProdutosWidget antiga, apenas chama carregar_dados_inventario no final
+        linha_selecionada = self.tabela_inventario.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um produto para excluir.")
+            return
+
+        item_id = self.tabela_inventario.item(linha_selecionada, 0)
+        produto_id = item_id.data(Qt.UserRole)
+        nome_produto = self.tabela_inventario.item(linha_selecionada, 1).text()
+
+        resposta = QMessageBox.question(self, "Confirmar Exclusão", f"Tem a certeza de que deseja excluir o produto '{nome_produto}'?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+
+        if resposta == QMessageBox.StandardButton.Yes:
+            global access_token
+            url = f"{API_BASE_URL}/api/produtos/{produto_id}"
+            headers = {'Authorization': f'Bearer {access_token}'}
+            try:
+                response = requests.delete(url, headers=headers)
+                if response and response.status_code == 200:
+                    QMessageBox.information(self, "Sucesso", "Produto excluído com sucesso!")
+                    self.carregar_dados_inventario()
+                else:
+                    erro = response.json().get('erro', 'Erro desconhecido.')
+                    QMessageBox.warning(self, "Erro", f"Não foi possível excluir o produto: {erro}")
+            except requests.exceptions.RequestException as e:
+                QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
+
+class GestaoEstoqueWidget(QWidget):
+    """Widget contêiner que gerencia as visualizações de Inventário e Histórico."""
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(0,0,0,0)
+
+        # --- Sub-Widgets (as "telas" internas) ---
+        self.inventario_view = InventarioWidget()
+        self.historico_view = HistoricoWidget()
+
+        # --- Botões de Navegação ---
+        nav_layout = QHBoxLayout()
+        self.btn_ver_inventario = QPushButton("Visão Geral do Inventário")
+        self.btn_ver_historico = QPushButton("Ver Histórico de Movimentações")
+        self.btn_ver_inventario.setCheckable(True)
+        self.btn_ver_historico.setCheckable(True)
+        self.btn_ver_inventario.setChecked(True)
+
+        nav_layout.addWidget(self.btn_ver_inventario)
+        nav_layout.addWidget(self.btn_ver_historico)
+        nav_layout.addStretch(1)
+
+        # --- Stacked Widget para alternar as telas ---
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.inventario_view)
+        self.stack.addWidget(self.historico_view)
+
+        self.layout.addLayout(nav_layout)
+        self.layout.addWidget(self.stack)
+
+        # --- Conexões ---
+        self.btn_ver_inventario.clicked.connect(self.mostrar_inventario)
+        self.btn_ver_historico.clicked.connect(self.mostrar_historico)
+
+    def mostrar_inventario(self):
+        self.stack.setCurrentWidget(self.inventario_view)
+        self.btn_ver_inventario.setChecked(True)
+        self.btn_ver_historico.setChecked(False)
+        self.inventario_view.carregar_dados_inventario()
+
+    def mostrar_historico(self):
+        self.stack.setCurrentWidget(self.historico_view)
+        self.btn_ver_inventario.setChecked(False)
+        self.btn_ver_historico.setChecked(True)
+        self.historico_view.carregar_historico()
+
 class ImportacaoWidget(QWidget):
     produtos_importados_sucesso = Signal()
 
@@ -1692,10 +1951,8 @@ class JanelaPrincipal(QMainWindow):
         
             self.stacked_widget = QStackedWidget()
             self.stacked_widget.setObjectName("mainContentArea")
-            
             self.tela_dashboard = DashboardWidget()
-            self.tela_produtos = ProdutosWidget()
-            self.tela_estoque = EstoqueWidget()
+            self.tela_gestao_estoque = GestaoEstoqueWidget()
             self.tela_entrada_rapida = EntradaRapidaWidget()
             self.tela_saida_rapida = SaidaRapidaWidget()
             self.tela_relatorios = RelatoriosWidget()
@@ -1705,8 +1962,7 @@ class JanelaPrincipal(QMainWindow):
             self.tela_importacao = ImportacaoWidget()
 
             self.stacked_widget.addWidget(self.tela_dashboard)
-            self.stacked_widget.addWidget(self.tela_produtos)
-            self.stacked_widget.addWidget(self.tela_estoque)
+            self.stacked_widget.addWidget(self.tela_gestao_estoque)
             self.stacked_widget.addWidget(self.tela_entrada_rapida)
             self.stacked_widget.addWidget(self.tela_saida_rapida)
             self.stacked_widget.addWidget(self.tela_relatorios)
@@ -1788,8 +2044,7 @@ class JanelaPrincipal(QMainWindow):
             self.layout_painel_lateral.setAlignment(Qt.AlignTop)
 
             self.btn_dashboard = QPushButton("🏠 Dashboard")
-            self.btn_produtos = QPushButton("📦 Produtos")
-            self.btn_estoque = QPushButton("📊 Estoque")
+            self.btn_inventario = QPushButton("📦 Inventário")
             self.btn_entrada_rapida = QPushButton("➡️ Entrada Rápida")
             self.btn_saida_rapida = QPushButton("⬅️ Saída Rápida")
             self.btn_relatorios = QPushButton("📄 Relatórios")
@@ -1800,8 +2055,7 @@ class JanelaPrincipal(QMainWindow):
             self.btn_logoff.setObjectName("btnLogoff")
 
             self.layout_painel_lateral.addWidget(self.btn_dashboard)
-            self.layout_painel_lateral.addWidget(self.btn_produtos)
-            self.layout_painel_lateral.addWidget(self.btn_estoque)
+            self.layout_painel_lateral.addWidget(self.btn_inventario)   
             self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
             self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
             self.layout_painel_lateral.addWidget(self.btn_relatorios)
@@ -1814,8 +2068,7 @@ class JanelaPrincipal(QMainWindow):
             layout_principal.addWidget(self.stacked_widget)
 
             self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
-            self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
-            self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
+            self.btn_inventario.clicked.connect(self.mostrar_tela_gestao_estoque)
             self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
             self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
             self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
@@ -1823,13 +2076,13 @@ class JanelaPrincipal(QMainWindow):
             self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
             self.btn_logoff.clicked.connect(self.logoff_requested.emit)
             
-            self.tela_dashboard.ir_para_produtos.connect(self.mostrar_tela_produtos)
+            
             self.tela_dashboard.ir_para_fornecedores.connect(self.mostrar_tela_fornecedores)
             self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
             self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
+            self.tela_importacao.produtos_importados_sucesso.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
             self.tela_saida_rapida.estoque_atualizado.connect(self.tela_estoque.saldos_view.carregar_dados_estoque)
-            self.tela_importacao.produtos_importados_sucesso.connect(self.tela_produtos.carregar_produtos)
             signal_handler.fornecedores_atualizados.connect(self.tela_fornecedores.carregar_fornecedores)
             signal_handler.naturezas_atualizadas.connect(self.tela_naturezas.carregar_naturezas)
 
