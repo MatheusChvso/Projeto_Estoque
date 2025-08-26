@@ -19,9 +19,8 @@ from PySide6.QtGui import (
     QPixmap, QAction, QDoubleValidator, QKeySequence, QIcon
 )
 from PySide6.QtCore import (
-    Qt, QTimer, Signal, QDate, QEvent
+    Qt, QTimer, Signal, QDate, QEvent, QObject
 )
-from PySide6.QtCore import QObject, QThread
 
 from config import SERVER_IP
 
@@ -33,20 +32,14 @@ API_BASE_URL = f"http://{SERVER_IP}:5000"
 
 class SignalHandler(QObject):
     """Um gestor central para sinais globais da aplicação."""
-    # O sinal de logout que já tínhamos, se aplicável
-    # logout_required = Signal() 
-    
-    # Os novos sinais para atualização de dados
     fornecedores_atualizados = Signal()
     naturezas_atualizadas = Signal()
 
-# Cria uma instância única que toda a aplicação vai usar
 signal_handler = SignalHandler()
 
 def resource_path(relative_path):
     """ Retorna o caminho absoluto para o recurso, funcionando tanto no desenvolvimento quanto no .exe do PyInstaller. """
     try:
-        # PyInstaller cria uma pasta temporária e armazena o caminho em _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -55,58 +48,6 @@ def resource_path(relative_path):
 # ==============================================================================
 # 3. JANELAS DE DIÁLOGO (FORMULÁRIOS)
 # ==============================================================================
-
-class FormDataLoader(QObject):
-    """Worker que carrega os dados do formulário numa thread separada de forma otimizada."""
-    finished = Signal(dict)
-
-    def __init__(self, produto_id):
-        super().__init__()
-        self.produto_id = produto_id
-
-    def run(self):
-        results = {'status': 'success'}
-        try:
-            global access_token
-            headers = {'Authorization': f'Bearer {access_token}'}
-            timeout = 10  # Podemos ser mais generosos com um único pedido
-
-            params = {}
-            if self.produto_id:
-                params['produto_id'] = self.produto_id
-
-            # Faz um único pedido para o novo endpoint otimizado
-            response = requests.get(
-                f"{API_BASE_URL}/api/formularios/produto_data", 
-                headers=headers, 
-                params=params, 
-                timeout=timeout
-            )
-            response.raise_for_status()
-            
-            # Extrai os dados da resposta única
-            data = response.json()
-            results['fornecedores'] = data.get('fornecedores', [])
-            results['naturezas'] = data.get('naturezas', [])
-            if data.get('produto'):
-                results['produto'] = data['produto']
-        
-        except requests.exceptions.Timeout:
-            results['status'] = 'error'
-            results['message'] = "O servidor demorou demasiado a responder (Timeout).\nVerifique a sua conexão de rede e se o servidor está a funcionar."
-        except requests.exceptions.ConnectionError:
-            results['status'] = 'error'
-            results['message'] = "Não foi possível conectar ao servidor.\nVerifique o endereço IP no ficheiro config.py e o estado do servidor."
-        except requests.exceptions.HTTPError as http_err:
-            results['status'] = 'error'
-            results['message'] = f"Ocorreu um erro na API: {http_err}"
-        except Exception as e:
-            results['status'] = 'error'
-            results['message'] = f"Ocorreu um erro inesperado: {e}"
-        
-        self.finished.emit(results)
-
-
 
 class FormularioProdutoDialog(QDialog):
     """Janela de formulário para Adicionar ou Editar um Produto."""
@@ -188,7 +129,6 @@ class FormularioProdutoDialog(QDialog):
         self.carregar_dados_iniciais()
 
     def carregar_dados_iniciais(self):
-        """Método central que controla a ordem de carregamento dos dados."""
         self.carregar_listas_de_apoio()
         if self.produto_id:
             self.carregar_dados_produto()
@@ -364,9 +304,6 @@ class FormularioProdutoDialog(QDialog):
 
         except Exception as e:
             QMessageBox.warning(self, "Erro", f"Não foi possível salvar o produto: {e}")
-            
-            
-            
 
 class FormularioFornecedorDialog(QDialog):
     def __init__(self, parent=None, fornecedor_id=None):
@@ -613,16 +550,11 @@ class FormularioUsuarioDialog(QDialog):
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
 
-# Em main_ui.py, adicione esta nova classe
-
 class ImportacaoWidget(QWidget):
-    """Tela para importação de produtos em massa a partir de um ficheiro CSV."""
-    # --- ADIÇÃO 1: Definimos o novo sinal que a classe pode emitir ---
     produtos_importados_sucesso = Signal()
 
     def __init__(self):
         super().__init__()
-        # O resto do seu __init__ continua exatamente igual...
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.caminho_ficheiro = None
@@ -632,8 +564,8 @@ class ImportacaoWidget(QWidget):
         
         instrucoes = QLabel(
             "<b>Instruções:</b><br>"
-            "1. Prepare uma planilha com as seguintes colunas obrigatórias: <b>codigo, nome, preco</b>.<br>"
-            "2. Colunas opcionais: <b>quantidade</b>, <b>descricao</b>, <b>fornecedores_nomes</b>, <b>naturezas_nomes</b>.<br>"
+            "1. Prepare uma planilha com as seguintes colunas obrigatórias: <b>codigo, nome</b>.<br>"
+            "2. Colunas opcionais: <b>preco, quantidade</b>, <b>descricao</b>, <b>fornecedores_nomes</b>, <b>naturezas_nomes</b>.<br>"
             "3. Para múltiplos fornecedores ou naturezas, separe os nomes por vírgula (ex: 'Fornecedor A, Fornecedor B').<br>"
             "4. Salve a planilha no formato <b>CSV (Valores separados por vírgulas)</b>.<br>"
         )
@@ -647,7 +579,7 @@ class ImportacaoWidget(QWidget):
         layout_selecao.addStretch(1)
 
         self.btn_importar = QPushButton("🚀 Iniciar Importação")
-        self.btn_importar.setObjectName("btnImportar")
+        self.btn_importar.setObjectName("btnPositive")
         self.btn_importar.setEnabled(False)
 
         label_resultados = QLabel("Resultados da Importação:")
@@ -663,7 +595,6 @@ class ImportacaoWidget(QWidget):
 
         self.btn_selecionar.clicked.connect(self.selecionar_ficheiro)
         self.btn_importar.clicked.connect(self.iniciar_importacao)
-
 
     def selecionar_ficheiro(self):
         caminho, _ = QFileDialog.getOpenFileName(self, "Selecionar Ficheiro CSV", "", "Ficheiros CSV (*.csv)")
@@ -701,19 +632,16 @@ class ImportacaoWidget(QWidget):
                 
                 self.text_resultados.setText(resultado_texto)
                 
-                # --- ADIÇÃO 2: Emitimos o sinal se a importação teve sucesso ---
                 if dados.get('produtos_importados', 0) > 0:
                     self.produtos_importados_sucesso.emit()
             else:
                 self.text_resultados.setText(f"Erro na API: {response.text}")
-
         except Exception as e:
             self.text_resultados.setText(f"Ocorreu um erro crítico: {e}")
         
         self.btn_importar.setEnabled(False)
 
 class ProdutosWidget(QWidget):
-    """Tela para gerir (CRUD) os produtos."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
@@ -783,14 +711,9 @@ class ProdutosWidget(QWidget):
         dialog.exec()
 
     def atualizar_linha_produto(self, linha, dados_produto):
-        """Atualiza uma única linha na tabela com os novos dados, sem recarregar tudo."""
-        # --- CORREÇÃO AQUI ---
-        # Cria o novo item para a primeira coluna
         item_codigo = QTableWidgetItem(dados_produto['codigo'])
-        # Re-define o ID do produto no UserRole para futuras edições
         item_codigo.setData(Qt.UserRole, dados_produto['id'])
         self.tabela_produtos.setItem(linha, 0, item_codigo)
-        # --- FIM DA CORREÇÃO ---
 
         self.tabela_produtos.setItem(linha, 1, QTableWidgetItem(dados_produto['nome']))
         self.tabela_produtos.setItem(linha, 2, QTableWidgetItem(dados_produto['descricao']))
@@ -858,28 +781,23 @@ class ProdutosWidget(QWidget):
         except requests.exceptions.RequestException as e:
             print(f"Erro de Conexão: {e}")
 
-            
 class SaldosWidget(QWidget):
-    """Tela para visualizar os saldos de estoque, com pesquisa via API e ordenação local."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
-        self.dados_exibidos = [] # Guarda os dados atualmente na tabela
+        self.dados_exibidos = []
 
-        # --- Título ---
         self.titulo = QLabel("Consulta de Saldos de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold;")
 
-        # --- Layout de Controles ---
         layout_controles = QHBoxLayout()
         
         self.input_pesquisa = QLineEdit()
         self.input_pesquisa.setPlaceholderText("Buscar por Nome ou Códigos (A, B ou C)...")
         
-        # --- BOTÕES DE ORDENAÇÃO COM ÍCONES ---
         self.btn_ordenar_nome = QPushButton("🔤 A-Z")
         self.btn_ordenar_nome.setToolTip("Ordenar por Nome do Produto")
-        self.btn_ordenar_nome.setObjectName("btnIcon") # Damos um nome para o estilo
+        self.btn_ordenar_nome.setObjectName("btnIcon")
 
         self.btn_ordenar_codigo = QPushButton("🔢 Cód.")
         self.btn_ordenar_codigo.setToolTip("Ordenar por Código Principal")
@@ -893,7 +811,6 @@ class SaldosWidget(QWidget):
         layout_controles.addWidget(self.btn_ordenar_codigo)
         layout_controles.addWidget(self.btn_recarregar)
 
-        # --- Tabela de Estoque (sem alterações) ---
         self.tabela_estoque = QTableWidget()
         self.tabela_estoque.setColumnCount(6)
         self.tabela_estoque.setHorizontalHeaderLabels([
@@ -905,23 +822,19 @@ class SaldosWidget(QWidget):
         header = self.tabela_estoque.horizontalHeader()
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         
-        # --- Adicionando Widgets ao Layout Principal ---
         self.layout.addWidget(self.titulo)
         self.layout.addLayout(layout_controles)
         self.layout.addWidget(self.tabela_estoque)
 
-        # --- Temporizador para a busca ---
         self.search_timer = QTimer(self)
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self.carregar_dados_estoque)
 
-        # --- Conexões ---
         self.btn_recarregar.clicked.connect(self.recarregar_lista_completa)
         self.input_pesquisa.textChanged.connect(self.iniciar_busca_timer)
         self.btn_ordenar_nome.clicked.connect(self.ordenar_por_nome)
         self.btn_ordenar_codigo.clicked.connect(self.ordenar_por_codigo)
 
-        # --- Carga Inicial ---
         self.carregar_dados_estoque()
 
     def iniciar_busca_timer(self):
@@ -945,7 +858,7 @@ class SaldosWidget(QWidget):
         try:
             response = requests.get(url, headers=headers, params=params)
             if response and response.status_code == 200:
-                self.dados_exibidos = response.json() # Guarda os dados recebidos
+                self.dados_exibidos = response.json()
                 self.popular_tabela(self.dados_exibidos)
             else:
                 QMessageBox.warning(self, "Erro", "Não foi possível carregar os saldos.")
@@ -971,28 +884,23 @@ class SaldosWidget(QWidget):
             self.tabela_estoque.setItem(linha, 4, QTableWidgetItem(item['codigoB']))
             self.tabela_estoque.setItem(linha, 5, QTableWidgetItem(item['codigoC']))
 
-    # --- LÓGICA DE ORDENAÇÃO LOCAL ---
     def ordenar_por_nome(self):
-        """Ordena os dados já exibidos por nome e atualiza a tabela."""
         self.dados_exibidos.sort(key=lambda item: item['nome'].lower())
         self.popular_tabela(self.dados_exibidos)
 
     def ordenar_por_codigo(self):
-        """Ordena os dados já exibidos por código e atualiza a tabela."""
         self.dados_exibidos.sort(key=lambda item: item['codigo'])
         self.popular_tabela(self.dados_exibidos)
 
 class HistoricoWidget(QWidget):
-    """Sub-tela para visualizar e filtrar o histórico de movimentações."""
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.dados_completos = []
 
-        # --- Layout de Filtros ---
         layout_filtros = QHBoxLayout()
         self.combo_tipo = QComboBox()
-        self.combo_tipo.addItems(["Todas", "Entrada", "Saida"]) # Corrigido para "Saida"
+        self.combo_tipo.addItems(["Todas", "Entrada", "Saida"])
         self.combo_tipo.setStyleSheet("font-size: 14px; padding: 5px;")
         
         self.btn_recarregar = QPushButton("Recarregar Histórico")
@@ -1002,9 +910,8 @@ class HistoricoWidget(QWidget):
         layout_filtros.addStretch(1)
         layout_filtros.addWidget(self.btn_recarregar)
 
-        # --- Tabela de Histórico (com a nova coluna) ---
         self.tabela_historico = QTableWidget()
-        self.tabela_historico.setColumnCount(8) # Aumentado para 8 colunas
+        self.tabela_historico.setColumnCount(8)
         self.tabela_historico.setHorizontalHeaderLabels([
             "Data/Hora", "Cód. Produto", "Nome Produto", "Tipo", "Qtd. Mov.", "Saldo Após", "Usuário", "Motivo da Saída"
         ])
@@ -1015,16 +922,12 @@ class HistoricoWidget(QWidget):
         self.layout.addLayout(layout_filtros)
         self.layout.addWidget(self.tabela_historico)
 
-        # --- Conexões ---
         self.btn_recarregar.clicked.connect(self.carregar_historico)
-        # O filtro agora é aplicado diretamente na chamada da API
         self.combo_tipo.currentIndexChanged.connect(self.carregar_historico)
 
-        # Carga inicial
         self.carregar_historico()
 
     def carregar_historico(self):
-        """Busca o histórico filtrado da API e o exibe na tabela."""
         global access_token
         
         data_fim = QDate.currentDate()
@@ -1033,7 +936,7 @@ class HistoricoWidget(QWidget):
         params = {
             'data_inicio': data_inicio.toString("yyyy-MM-dd"),
             'data_fim': data_fim.toString("yyyy-MM-dd"),
-            'formato': 'json' # <<< ADICIONE ESTA LINHA CRUCIAL
+            'formato': 'json'
         }
         
         filtro_tipo = self.combo_tipo.currentText()
@@ -1059,7 +962,6 @@ class HistoricoWidget(QWidget):
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
             
     def popular_tabela(self, dados):
-        """Preenche a tabela com os dados fornecidos."""
         self.tabela_historico.setRowCount(0)
         self.tabela_historico.setRowCount(len(dados))
 
@@ -1069,11 +971,9 @@ class HistoricoWidget(QWidget):
             self.tabela_historico.setItem(linha, 2, QTableWidgetItem(mov['produto_nome']))
             self.tabela_historico.setItem(linha, 3, QTableWidgetItem(mov['tipo']))
             self.tabela_historico.setItem(linha, 4, QTableWidgetItem(str(mov['quantidade'])))
-            # --- CORREÇÃO: Usa a chave 'saldo_apos' ---
             self.tabela_historico.setItem(linha, 5, QTableWidgetItem(str(mov.get('saldo_apos', ''))))
             self.tabela_historico.setItem(linha, 6, QTableWidgetItem(mov['usuario_nome']))
             self.tabela_historico.setItem(linha, 7, QTableWidgetItem(mov.get('motivo_saida', '')))
-
 
 class RelatoriosWidget(QWidget):
     def __init__(self):
@@ -1413,17 +1313,18 @@ class NaturezasWidget(QWidget):
                 QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
 class EntradaRapidaWidget(QWidget):
-    """Tela para registar entradas de estoque de forma rápida por código de produto."""
     estoque_atualizado = Signal()
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.produto_encontrado_id = None
 
-        # --- 1. CRIAÇÃO DE TODOS OS WIDGETS ---
         self.titulo = QLabel("Entrada Rápida de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
         
+        form_layout = QFormLayout()
+        form_layout.setSpacing(15)
+
         self.input_codigo = QLineEdit()
         self.input_codigo.setPlaceholderText("Digite ou leia o código do produto aqui")
         
@@ -1439,10 +1340,6 @@ class EntradaRapidaWidget(QWidget):
         self.btn_registrar = QPushButton("Registar Entrada")
         self.btn_registrar.setObjectName("btnPositive")
 
-        # --- 2. ORGANIZAÇÃO DO LAYOUT ---
-        form_layout = QFormLayout()
-        form_layout.setSpacing(15)
-
         layout_codigo = QHBoxLayout()
         layout_codigo.addWidget(self.input_codigo)
         layout_codigo.addWidget(self.btn_verificar)
@@ -1455,13 +1352,11 @@ class EntradaRapidaWidget(QWidget):
         self.layout.addWidget(self.btn_registrar, 0, Qt.AlignmentFlag.AlignRight)
         self.layout.addStretch(1)
 
-        # --- 3. CONEXÕES DOS SINAIS ---
         self.btn_verificar.clicked.connect(self.verificar_produto)
         self.input_codigo.returnPressed.connect(self.verificar_produto) 
         self.btn_registrar.clicked.connect(self.registrar_entrada)
         self.input_quantidade.returnPressed.connect(self.btn_registrar.click)
 
-        # --- 4. ESTADO INICIAL ---
         self.resetar_formulario()
 
     def verificar_produto(self):
@@ -1534,7 +1429,6 @@ class EntradaRapidaWidget(QWidget):
         self.input_codigo.setFocus()
 
 class SaidaRapidaWidget(QWidget):
-    """Tela para registar saídas de estoque de forma rápida por código de produto."""
     estoque_atualizado = Signal()
 
     def __init__(self):
@@ -1542,7 +1436,6 @@ class SaidaRapidaWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.produto_encontrado_id = None
 
-        # --- 1. CRIAÇÃO DE TODOS OS WIDGETS ---
         self.titulo = QLabel("Saída Rápida de Estoque")
         self.titulo.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
         
@@ -1564,7 +1457,6 @@ class SaidaRapidaWidget(QWidget):
         self.btn_registrar = QPushButton("Registar Saída")
         self.btn_registrar.setObjectName("btnNegative")
 
-        # --- 2. ORGANIZAÇÃO DO LAYOUT ---
         form_layout = QFormLayout()
         form_layout.setSpacing(15)
         
@@ -1581,13 +1473,11 @@ class SaidaRapidaWidget(QWidget):
         self.layout.addWidget(self.btn_registrar, 0, Qt.AlignmentFlag.AlignRight)
         self.layout.addStretch(1)
 
-        # --- 3. CONEXÕES DOS SINAIS ---
         self.btn_verificar.clicked.connect(self.verificar_produto)
         self.input_codigo.returnPressed.connect(self.verificar_produto)
         self.btn_registrar.clicked.connect(self.registrar_saida)
         self.input_motivo.returnPressed.connect(self.btn_registrar.click)
 
-        # --- 4. ESTADO INICIAL ---
         self.resetar_formulario()
 
     def verificar_produto(self):
@@ -1664,7 +1554,6 @@ class SaidaRapidaWidget(QWidget):
         self.input_motivo.setEnabled(False)
         self.btn_registrar.setEnabled(False)
         self.input_codigo.setFocus()
-
 
 class UsuariosWidget(QWidget):
     def __init__(self):
@@ -1795,14 +1684,12 @@ class JanelaPrincipal(QMainWindow):
     def __init__(self):
         super().__init__()
         
-        # --- BLOCO DE DEPURAÇÃO PARA APANHAR ERROS SILENCIOSOS ---
         try:
             self.setWindowTitle("Sistema de Gestão de Estoque")
             self.resize(1280, 720)
         
             self.dados_usuario = {}
         
-            # --- ÁREA DE CONTEÚDO ---
             self.stacked_widget = QStackedWidget()
             self.stacked_widget.setObjectName("mainContentArea")
             
@@ -1827,7 +1714,6 @@ class JanelaPrincipal(QMainWindow):
             self.stacked_widget.addWidget(self.tela_naturezas)
             self.stacked_widget.addWidget(self.tela_importacao)
         
-            # --- BARRA DE MENUS ---
             menu_bar = self.menuBar()
             
             menu_arquivo = menu_bar.addMenu("&Arquivo")
@@ -1891,12 +1777,10 @@ class JanelaPrincipal(QMainWindow):
             acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
             menu_ajuda.addAction(acao_sobre)
 
-            # --- LAYOUT GERAL ---
             widget_central = QWidget()
             self.setCentralWidget(widget_central)
             layout_principal = QHBoxLayout(widget_central)
 
-            # --- PAINEL LATERAL ---
             painel_lateral = QWidget()
             painel_lateral.setObjectName("painelLateral")
             painel_lateral.setFixedWidth(220)
@@ -1929,7 +1813,6 @@ class JanelaPrincipal(QMainWindow):
             layout_principal.addWidget(painel_lateral)
             layout_principal.addWidget(self.stacked_widget)
 
-            # --- CONEXÕES ---
             self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
             self.btn_produtos.clicked.connect(self.mostrar_tela_produtos)
             self.btn_estoque.clicked.connect(self.mostrar_tela_estoque)
@@ -1953,7 +1836,6 @@ class JanelaPrincipal(QMainWindow):
             self.statusBar().showMessage("Pronto.")
 
         except Exception as e:
-            # Se qualquer erro acontecer durante a inicialização, ele será apanhado aqui
             error_log_path = os.path.join(os.path.expanduser("~"), "Desktop", "crash_log.txt")
             with open(error_log_path, "w", encoding="utf-8") as f:
                 f.write(f"Ocorreu um erro crítico ao iniciar a janela principal:\n\n")
@@ -1962,8 +1844,6 @@ class JanelaPrincipal(QMainWindow):
             QMessageBox.critical(self, "Erro de Inicialização", f"Ocorreu um erro crítico. Verifique o ficheiro 'crash_log.txt' no seu Ambiente de Trabalho.")
             sys.exit(1)
 
-    # O resto da sua classe JanelaPrincipal continua aqui...
-    # (carregar_dados_usuario, mostrar_tela_*, etc.)
     def carregar_dados_usuario(self, dados_usuario):
         self.dados_usuario = dados_usuario
         
@@ -2026,11 +1906,9 @@ class JanelaPrincipal(QMainWindow):
         )
     
     def mostrar_tela_importacao(self):
-        """Mostra a tela de importação de produtos."""
         self.stacked_widget.setCurrentWidget(self.tela_importacao)
 
 class InteractiveKPICard(QFrame):
-    """Um cartão de KPI clicável que emite um sinal."""
     clicked = Signal()
 
     def __init__(self, titulo, valor_inicial="--", icone="●"):
@@ -2061,13 +1939,10 @@ class InteractiveKPICard(QFrame):
         self.label_valor.setText(str(novo_valor))
 
     def mouseReleaseEvent(self, event):
-        """Emite o sinal 'clicked' quando o cartão é clicado."""
         self.clicked.emit()
         super().mouseReleaseEvent(event)
 
 class DashboardWidget(QWidget):
-    """Tela principal do dashboard com um design profissional e minimalista."""
-    # Sinais para navegar para outras telas
     ir_para_produtos = Signal()
     ir_para_fornecedores = Signal()
     ir_para_entrada_rapida = Signal()
@@ -2080,7 +1955,6 @@ class DashboardWidget(QWidget):
         self.layout.setContentsMargins(30, 20, 30, 20)
         self.layout.setSpacing(20)
 
-        # --- CABEÇALHO: Logo e Mensagem de Boas-vindas ---
         header_layout = QHBoxLayout()
         self.label_logo = QLabel()
         logo_pixmap = QPixmap(resource_path("logo.png"))
@@ -2094,7 +1968,6 @@ class DashboardWidget(QWidget):
         header_layout.addWidget(self.label_boas_vindas)
         header_layout.addStretch(1)
 
-        # --- KPIs INTERATIVOS ---
         kpi_layout = QHBoxLayout()
         self.card_produtos = InteractiveKPICard("Produtos", icone="📦")
         self.card_fornecedores = InteractiveKPICard("Fornecedores", icone="🚚")
@@ -2103,7 +1976,6 @@ class DashboardWidget(QWidget):
         kpi_layout.addWidget(self.card_fornecedores)
         kpi_layout.addWidget(self.card_valor_estoque)
 
-        # --- BOTÕES DE AÇÃO PRINCIPAIS ---
         action_layout = QHBoxLayout()
         self.btn_atalho_entrada = QPushButton("➡️\n\nNova Entrada")
         self.btn_atalho_entrada.setObjectName("btnDashboardAction")
@@ -2112,15 +1984,13 @@ class DashboardWidget(QWidget):
         action_layout.addWidget(self.btn_atalho_entrada)
         action_layout.addWidget(self.btn_atalho_saida)
 
-        # Adicionando tudo ao layout principal
         self.layout.addLayout(header_layout)
-        self.layout.addWidget(QLabel("Resumo do Sistema")) # Um título simples
+        self.layout.addWidget(QLabel("Resumo do Sistema"))
         self.layout.addLayout(kpi_layout)
         self.layout.addWidget(QLabel("Operações Comuns"))
         self.layout.addLayout(action_layout)
         self.layout.addStretch(1)
 
-        # --- Conexões ---
         self.card_produtos.clicked.connect(self.ir_para_produtos.emit)
         self.card_fornecedores.clicked.connect(self.ir_para_fornecedores.emit)
         self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
@@ -2143,30 +2013,25 @@ class DashboardWidget(QWidget):
                 self.card_valor_estoque.set_valor(valor_formatado)
         except requests.exceptions.RequestException:
             print("Erro ao carregar KPIs do dashboard.")
-
         
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN
 # ==============================================================================
 
 class AppManager:
-    """Classe para gerir o ciclo de vida das janelas da aplicação."""
     def __init__(self):
         self.login_window = None
         self.main_window = None
 
     def start(self):
-        """Inicia a aplicação mostrando a janela de login."""
         self.show_login_window()
 
     def show_login_window(self):
-        """Cria e exibe a janela de login."""
         self.login_window = JanelaLogin()
         self.login_window.login_successful.connect(self.show_main_window)
         self.login_window.show()
 
     def show_main_window(self, user_data):
-        """Cria e exibe a janela principal após um login bem-sucedido."""
         self.main_window = JanelaPrincipal()
         self.main_window.carregar_dados_usuario(user_data)
         self.main_window.show()
@@ -2175,18 +2040,15 @@ class AppManager:
         self.login_window.close()
 
     def handle_logoff(self):
-        """Fecha a janela principal e volta para a tela de login."""
         if self.main_window:
             self.main_window.close()
         self.show_login_window()
 
-
 class JanelaLogin(QWidget):
-    login_successful = Signal(dict) # Sinal que carrega os dados do utilizador
+    login_successful = Signal(dict)
 
     def __init__(self):
         super().__init__()
-        # ... (o resto do seu __init__ continua igual)
         self.setWindowTitle("Meu Sistema de Gestão - Login")
         self.resize(300, 350)
         self.janela_principal = None
@@ -2241,8 +2103,6 @@ class JanelaLogin(QWidget):
                 else:
                     dados_usuario_logado = {'nome': 'Desconhecido', 'permissao': 'Usuario'}
                 
-                # --- A MUDANÇA ESTÁ AQUI ---
-                # Em vez de criar a janela, apenas emitimos o sinal de sucesso
                 self.login_successful.emit(dados_usuario_logado)
                 self.close()
             else:
@@ -2250,7 +2110,6 @@ class JanelaLogin(QWidget):
                 QMessageBox.warning(self, "Erro de Login", f"Falha no login: {erro_msg}")
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
-
 
 # ==============================================================================
 # 7. BLOCO DE EXECUÇÃO PRINCIPAL
@@ -2264,7 +2123,6 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print("AVISO: Arquivo de estilo (style.qss) não encontrado.")
     
-    # Cria o gestor e inicia a aplicação
     manager = AppManager()
     manager.start()
     
