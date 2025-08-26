@@ -27,6 +27,10 @@ from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtCore import QUrl
 import threading
 
+
+import webbrowser
+from packaging.version import parse as parse_version
+
 from config import SERVER_IP
 
 # ==============================================================================
@@ -34,6 +38,7 @@ from config import SERVER_IP
 # ==============================================================================
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
+APP_VERSION = "2.0"
 
 class SignalHandler(QObject):
     """Um gestor central para sinais globais da aplicação."""
@@ -49,6 +54,45 @@ def resource_path(relative_path):
     except Exception:
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
+
+def check_for_updates():
+    """Contacta a API para verificar se existe uma nova versão da aplicação."""
+    print("A verificar atualizações...")
+    try:
+        global access_token
+        headers = {'Authorization': f'Bearer {access_token}'}
+        # Usamos a rota que já criámos no app.py
+        response = requests.get(f"{API_BASE_URL}/api/versao", headers=headers, timeout=5)
+
+        if response.status_code == 200:
+            dados_versao = response.json()
+            versao_servidor = dados_versao.get("versao")
+            url_download = dados_versao.get("url_download")
+
+            # Compara as versões usando a biblioteca packaging
+            if versao_servidor and parse_version(versao_servidor) > parse_version(APP_VERSION):
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Icon.Information)
+                msg_box.setWindowTitle("Nova Versão Disponível!")
+                msg_box.setText(f"Uma nova versão ({versao_servidor}) do sistema está disponível.")
+                msg_box.setInformativeText("Deseja ir para a página de download agora?")
+                msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
+                
+                ret = msg_box.exec()
+                if ret == QMessageBox.StandardButton.Yes:
+                    webbrowser.open(url_download)
+            else:
+                print("A sua aplicação está atualizada.")
+        else:
+            # --- CORREÇÃO AQUI: Mostra um erro se a API falhar ---
+            print(f"Não foi possível verificar a versão. Erro da API: {response.status_code}")
+            QMessageBox.warning(None, "Verificação de Versão", f"Não foi possível contactar o servidor de atualizações (Erro: {response.status_code}).")
+
+    except Exception as e:
+        # --- CORREÇÃO AQUI: Mostra um erro para qualquer outra falha ---
+        print(f"Ocorreu um erro ao verificar atualizações: {e}")
+        QMessageBox.critical(None, "Erro na Verificação de Versão", f"Ocorreu um erro inesperado ao tentar verificar por novas versões:\n\n{e}")
 
 # ==============================================================================
 # 3. JANELAS DE DIÁLOGO (FORMULÁRIOS)
@@ -2529,6 +2573,7 @@ class AppManager:
         self.main_window.mostrar_tela_dashboard()
         self.main_window.logoff_requested.connect(self.handle_logoff)
         self.login_window.close()
+        check_for_updates()
 
     def handle_logoff(self):
         if self.main_window:

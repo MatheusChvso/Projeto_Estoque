@@ -26,6 +26,8 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.graphics.barcode import code128
+import os
+import json
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -795,6 +797,22 @@ def login_endpoint():
         return jsonify({'erro': str(e)}), 500
 # ==============================================================================
     
+@app.route('/api/versao', methods=['GET'])
+def get_versao_app():
+    """Lê e retorna o conteúdo do ficheiro de versão."""
+    try:
+        # Garante que o ficheiro é procurado na mesma pasta que o app.py
+        caminho_base = os.path.dirname(os.path.abspath(__file__))
+        caminho_json = os.path.join(caminho_base, 'versao.json')
+        
+        with open(caminho_json, 'r', encoding="utf-8") as f:
+            dados_versao = json.load(f)
+        return jsonify(dados_versao), 200
+    except FileNotFoundError:
+        return jsonify({'erro': 'Ficheiro de versão não encontrado no servidor.'}), 404
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
+
     
     
     
