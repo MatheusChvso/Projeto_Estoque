@@ -3,10 +3,10 @@
 
 a = Analysis(
     ['run.py'],
-    pathex=['../backend', '../backend/venv/Lib/site-packages'],
+    pathex=['../backend'],
     binaries=[],
-    datas=[('logo.png', '.'), ('style.qss', '.'), ('config.py', '.')],
-    hiddenimports=['sqlalchemy.sql.default_comparator'],
+    datas=[('logo.png', '.'), ('logo2.png', '.'), ('style.qss', '.'), ('config.py', '.'), ('easter_egg.wav', '.')],
+    hiddenimports=['sqlalchemy.sql.default_comparator', 'reportlab.graphics.barcode.common', 'reportlab.graphics.barcode.code39', 'reportlab.graphics.barcode.code93', 'reportlab.graphics.barcode.code128', 'reportlab.graphics.barcode.usps', 'reportlab.graphics.barcode.usps4s', 'reportlab.graphics.barcode.eanbc', 'reportlab.graphics.barcode.ean13', 'reportlab.graphics.barcode.i2of5', 'reportlab.graphics.barcode.qr', 'reportlab.graphics.barcode.ecc200datamatrix'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

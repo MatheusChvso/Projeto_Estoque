@@ -3,14 +3,14 @@
 [Setup]
 ; Informações básicas da aplicação
 AppName=Sistema de Gestão de Estoque
-AppVersion=1.14
+AppVersion=2.0
 AppPublisher=MatheusLopes
 DefaultDirName={autopf}\SistemaEstoque
 DefaultGroupName=Sistema de Gestão de Estoque
 DisableProgramGroupPage=yes
 ; Onde guardar o setup.exe final e qual o seu nome
 OutputDir=.\instalador
-OutputBaseFilename=setup_estoque_v1.14
+OutputBaseFilename=setup_estoque_2.0
 ; Configurações de compressão e aparência
 Compression=lzma
 SolidCompression=yes
