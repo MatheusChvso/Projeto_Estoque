@@ -552,6 +552,8 @@ class FormularioUsuarioDialog(QDialog):
 
 
 
+# Em main_ui.py, substitua a sua classe InventarioWidget por esta
+
 class InventarioWidget(QWidget):
     """A nova tela unificada para visualização e gestão do inventário."""
     def __init__(self):
@@ -603,11 +605,11 @@ class InventarioWidget(QWidget):
         self.tabela_inventario.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tabela_inventario.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.tabela_inventario.setAlternatingRowColors(True)
-        self.tabela_inventario.setWordWrap(True) # Ativa a quebra de linha
+        self.tabela_inventario.setWordWrap(True)
 
         header = self.tabela_inventario.horizontalHeader()
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch) # Nome
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch) # Descrição
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
 
         # --- Adicionando Widgets ao Layout Principal ---
         self.layout.addWidget(self.titulo)
@@ -662,7 +664,6 @@ class InventarioWidget(QWidget):
         self.tabela_inventario.setRowCount(len(dados))
         
         for linha, item in enumerate(dados):
-            # Item da primeira coluna guarda o ID
             item_codigo = QTableWidgetItem(item['codigo'])
             item_codigo.setData(Qt.UserRole, item['id_produto'])
             self.tabela_inventario.setItem(linha, 0, item_codigo)
@@ -681,15 +682,17 @@ class InventarioWidget(QWidget):
             self.tabela_inventario.setItem(linha, 5, QTableWidgetItem(item['codigoB']))
             self.tabela_inventario.setItem(linha, 6, QTableWidgetItem(item['codigoC']))
         
-        self.tabela_inventario.resizeRowsToContents() # Ajusta a altura das linhas para o texto
+        self.tabela_inventario.resizeRowsToContents()
 
     def ordenar_por_nome(self):
         self.dados_exibidos.sort(key=lambda item: item['nome'].lower())
         self.popular_tabela(self.dados_exibidos)
 
     def ordenar_por_quantidade(self):
-        self.dados_exibidos.sort(key=lambda item: item['saldo_atual'], reverse=self.sort_qtd_desc)
-        self.sort_qtd_desc = not self.sort_qtd_desc # Inverte a direção para o próximo clique
+        # --- A CORREÇÃO ESTÁ AQUI ---
+        # Convertemos o 'saldo_atual' para inteiro (int) apenas para a ordenação.
+        self.dados_exibidos.sort(key=lambda item: int(item['saldo_atual']), reverse=self.sort_qtd_desc)
+        self.sort_qtd_desc = not self.sort_qtd_desc
         self.popular_tabela(self.dados_exibidos)
 
     def abrir_formulario_adicionar(self):
@@ -712,7 +715,6 @@ class InventarioWidget(QWidget):
 
     def atualizar_linha_produto(self, linha, dados_produto):
         """Atualiza uma única linha na tabela com os novos dados."""
-        # A API de edição não devolve o saldo, então precisamos de o buscar
         saldo_antigo = self.tabela_inventario.item(linha, 3).text()
 
         item_codigo = QTableWidgetItem(dados_produto['codigo'])
@@ -722,7 +724,7 @@ class InventarioWidget(QWidget):
         self.tabela_inventario.setItem(linha, 1, QTableWidgetItem(dados_produto['nome']))
         self.tabela_inventario.setItem(linha, 2, QTableWidgetItem(dados_produto['descricao']))
         
-        saldo_item = QTableWidgetItem(saldo_antigo) # Mantém o saldo antigo para consistência visual
+        saldo_item = QTableWidgetItem(saldo_antigo)
         saldo_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.tabela_inventario.setItem(linha, 3, saldo_item)
 
@@ -735,7 +737,6 @@ class InventarioWidget(QWidget):
         self.tabela_inventario.resizeRowToContents(linha)
 
     def excluir_produto_selecionado(self):
-        # Esta lógica é idêntica à da ProdutosWidget antiga, apenas chama carregar_dados_inventario no final
         linha_selecionada = self.tabela_inventario.currentRow()
         if linha_selecionada < 0:
             QMessageBox.warning(self, "Seleção", "Por favor, selecione um produto para excluir.")
