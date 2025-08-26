@@ -21,6 +21,11 @@ from PySide6.QtGui import (
 from PySide6.QtCore import (
     Qt, QTimer, Signal, QDate, QEvent, QObject
 )
+import winsound
+import threading
+from PySide6.QtMultimedia import QSoundEffect
+from PySide6.QtCore import QUrl
+import threading
 
 from config import SERVER_IP
 
@@ -2298,15 +2303,10 @@ class JanelaPrincipal(QMainWindow):
         self.stacked_widget.setCurrentWidget(self.tela_naturezas)
         
     def mostrar_dialogo_sobre(self):
-        QMessageBox.about(self, 
-            "Sobre o Sistema de Gestão de Estoque",
-            """
-            <b>Sistema de Gestão de Estoque v1.14</b>
-            <p>Desenvolvido para controle de estoque na Szm.</p>
-            <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
-            <p>Agradecimentos especiais a Mathias pela colaboração e testes.</p>
-            """
-        )
+       """Exibe a nossa nova caixa de diálogo 'Sobre' personalizada."""
+       dialog = SobreDialog(self)
+       dialog.exec()
+
     
     def mostrar_tela_importacao(self):
         self.stacked_widget.setCurrentWidget(self.tela_importacao)
@@ -2321,6 +2321,82 @@ class JanelaPrincipal(QMainWindow):
         """Abre a janela de diálogo para alteração de senha."""
         dialog = MudarSenhaDialog(self)
         dialog.exec()
+
+
+class SobreDialog(QDialog):
+    """Uma janela 'Sobre' personalizada com um easter egg que toca um ficheiro de áudio."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sobre o Sistema")
+        self.setMinimumWidth(400)
+        self.click_count = 0
+
+        # --- Prepara o leitor de som ---
+        self.sound_effect = QSoundEffect()
+
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.setSpacing(15)
+
+        # --- Logo Clicável ---
+        self.logo_label = QLabel()
+        logo_pixmap = QPixmap(resource_path("logo2.png"))
+        logo_redimensionada = logo_pixmap.scaled(150, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.logo_label.setPixmap(logo_redimensionada)
+        self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.logo_label.setToolTip("Hmmm, o que será que acontece se clicar aqui várias vezes?")
+        self.logo_label.installEventFilter(self)
+
+        # --- Texto Informativo ---
+        info_text = QLabel(
+            """
+            <b>Sistema de Gestão de Estoque v2.0</b>
+            <p>Versão 26-08-2025</p>
+            <p>Desenvolvido por Matheus com Google Gemini :D.</p>
+            <p>Desenvolvido para controle de estoque na Szm.</p>
+            <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
+            <p>Agradecimentos especiais a Mathias pela colaboração e testes.</p>
+            
+            """
+        )
+        info_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_text.setWordWrap(True)
+
+        # --- Botão OK ---
+        self.ok_button = QPushButton("OK")
+        self.ok_button.clicked.connect(self.accept)
+
+        # Adicionando tudo ao layout
+        self.layout.addWidget(self.logo_label)
+        self.layout.addWidget(info_text)
+        self.layout.addWidget(self.ok_button, 0, Qt.AlignmentFlag.AlignCenter)
+
+    def eventFilter(self, source, event):
+        """Filtro que interceta os eventos antes de eles chegarem ao seu destino."""
+        if source is self.logo_label and event.type() == QEvent.Type.MouseButtonPress:
+            self.click_count += 1
+            print(f"Logo clicada {self.click_count} vezes.")
+            
+            if self.click_count == 10:
+                print("Easter Egg Ativado!")
+                self.tocar_musica() # Chama diretamente, sem thread
+                self.click_count = 0
+            
+            return True
+        
+        return super().eventFilter(source, event)
+
+    def tocar_musica(self):
+        """Toca um ficheiro de áudio como easter egg."""
+        try:
+            # Usa QSoundEffect para tocar o áudio sem bloquear a UI.
+            # Usamos resource_path para encontrar o ficheiro, e QUrl.fromLocalFile para o carregar.
+            self.sound_effect.setSource(QUrl.fromLocalFile(resource_path("easter_egg.wav")))
+            self.sound_effect.setVolume(0.8) # Volume a 80%
+            self.sound_effect.play()
+            print("A tocar o ficheiro de áudio easter_egg.wav")
+        except Exception as e:
+            print(f"Não foi possível tocar o som: {e}")
 
 
 class InteractiveKPICard(QFrame):
