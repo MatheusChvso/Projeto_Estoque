@@ -26,7 +26,8 @@ import threading
 from PySide6.QtMultimedia import QSoundEffect
 from PySide6.QtCore import QUrl
 import threading
-
+import json
+import random
 
 import webbrowser
 from packaging.version import parse as parse_version
@@ -38,7 +39,7 @@ from config import SERVER_IP
 # ==============================================================================
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
-APP_VERSION = "2.0"
+APP_VERSION = "2.1" #26/08/2025
 
 class SignalHandler(QObject):
     """Um gestor central para sinais globais da aplicação."""
@@ -2319,9 +2320,11 @@ class JanelaPrincipal(QMainWindow):
             self.stacked_widget.setCurrentWidget(self.tela_usuarios)
 
     def mostrar_tela_dashboard(self):
-        self.tela_dashboard.carregar_dados_dashboard()
+        # Passa o nome do utilizador logado para o método de carregamento do dashboard
+        nome_utilizador = self.dados_usuario.get('nome', 'Utilizador')
+        self.tela_dashboard.carregar_dados_dashboard(nome_utilizador)
         self.stacked_widget.setCurrentWidget(self.tela_dashboard)
-        
+
     def mostrar_tela_entrada_rapida(self):
         self.tela_entrada_rapida.resetar_formulario()
         self.stacked_widget.setCurrentWidget(self.tela_entrada_rapida)
@@ -2478,6 +2481,8 @@ class InteractiveKPICard(QFrame):
         super().mouseReleaseEvent(event)
 
 class DashboardWidget(QWidget):
+    """Tela principal do dashboard com um design profissional e minimalista."""
+    # Sinais para navegar para outras telas
     ir_para_produtos = Signal()
     ir_para_fornecedores = Signal()
     ir_para_entrada_rapida = Signal()
@@ -2488,21 +2493,184 @@ class DashboardWidget(QWidget):
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.layout.setContentsMargins(30, 20, 30, 20)
-        self.layout.setSpacing(20)
+        self.layout.setSpacing(25)
 
-        header_layout = QHBoxLayout()
-        self.label_logo = QLabel()
+        # --- CORREÇÃO: Curiosidades agora estão embutidas diretamente no código ---
+        self.lista_curiosidades = [
+    "A Cidade do Vaticano é o menor país do mundo.",
+    "O mel nunca se estraga. Arqueólogos encontraram potes de mel em túmulos egípcios com mais de 3000 anos e ainda comestíveis.",
+    "As formigas descansam cerca de 8 minutos num período de 12 horas.",
+    "O olho de um avestruz é maior do que o seu cérebro.",
+    "Os polvos têm três corações e o seu sangue é azul.",
+    "A Grande Muralha da China não é visível da Lua a olho nu.",
+    "O som não se propaga no vácuo.",
+    "O Brasil é o país com a maior biodiversidade do mundo.",
+    "As borboletas sentem o sabor com os seus pés.",
+    "Um raio pode atingir uma temperatura cinco vezes superior à da superfície do Sol.",
+    "O seu coração bate cerca de 100.000 vezes por dia.",
+    "A preguiça pode levar até um mês para digerir uma única folha.",
+    "O Oceano Pacífico é o maior e mais profundo oceano do mundo.",
+    "A Torre Eiffel pode ser 15 cm mais alta durante o verão devido à expansão térmica do ferro.",
+    "Os camelos têm três pálpebras para se protegerem da areia do deserto.",
+    "A Antártida é o maior deserto do mundo.",
+    "O ornitorrinco é um dos poucos mamíferos que põem ovos.",
+    "As vacas têm melhores amigas e ficam stressadas quando são separadas.",
+    "O recorde de voo de uma galinha é de 13 segundos.",
+    "A pele de um urso polar é preta por baixo do seu pelo branco.",
+    "O Sol é tão grande que caberiam aproximadamente 1.3 milhões de planetas Terra dentro dele.",
+    "As impressões digitais de um coala são indistinguíveis das de um humano.",
+    "O Japão tem mais de 6.800 ilhas.",
+    "Os flamingos são cor-de-rosa por causa dos pigmentos dos camarões e algas que comem.",
+    "O cérebro humano gera cerca de 23 watts de energia quando está acordado, o suficiente para acender uma lâmpada pequena.",
+    "As lontras do mar dão as mãos enquanto dormem para não se afastarem.",
+    "A Mona Lisa não tem sobrancelhas.",
+    "O isqueiro foi inventado antes do fósforo.",
+    "O esqueleto humano é composto por 206 ossos.",
+    "As girafas não têm cordas vocais.",
+    "O Monte Evereste cresce cerca de 4 milímetros por ano.",
+    "A água quente congela mais rápido do que a água fria, um fenómeno conhecido como efeito Mpemba.",
+    "As formigas não têm pulmões.",
+    "O caracol pode dormir por até três anos.",
+    "O chocolate já foi usado como moeda pelos Astecas.",
+    "A Austrália é mais larga do que a Lua.",
+    "O som de um chicote a estalar é, na verdade, um pequeno boom sónico.",
+    "O coração de uma baleia azul é tão grande que um humano poderia nadar através das suas artérias.",
+    "As abelhas conseguem reconhecer rostos humanos.",
+    "A Islândia é o único país sem mosquitos.",
+    "O primeiro telemóvel pesava mais de 1 kg.",
+    "O cabelo humano cresce, em média, 15 centímetros por ano.",
+    "As estrelas-do-mar não têm cérebro.",
+    "O Egito é o país com mais pirâmides no mundo, não o México.",
+    "Os cavalos-marinhos são os únicos animais em que o macho dá à luz.",
+    "Apenas 5% do oceano foi explorado.",
+    "O nome completo da Barbie é Barbara Millicent Roberts.",
+    "O pneu de um carro de Fórmula 1 gira cerca de 50 vezes por segundo a alta velocidade.",
+    "O corpo humano tem mais de 96.000 quilómetros de vasos sanguíneos.",
+    "As cabras têm sotaques.",
+    "O maior engarrafamento do mundo durou 12 dias.",
+    "A Rússia é maior em área de superfície do que Plutão.",
+    "O nome original do Pac-Man era Puck-Man.",
+    "As bananas são bagas, mas os morangos não são.",
+    "O músculo mais forte do corpo humano é a língua.",
+    "O grito de um pavão pode ser ouvido a mais de um quilómetro de distância.",
+    "A Lua está a afastar-se da Terra a uma taxa de 3.8 cm por ano.",
+    "O suor dos hipopótamos é cor-de-rosa.",
+    "O primeiro produto a ter um código de barras foi um pacote de pastilhas elásticas.",
+    "Os golfinhos dão nomes uns aos outros.",
+    "O olho humano consegue distinguir cerca de 10 milhões de cores diferentes.",
+    "O som de um pato não faz eco, e ninguém sabe porquê.",
+    "O nome original do Google era Backrub.",
+    "As unhas das mãos crescem mais rápido do que as unhas dos pés.",
+    "O cérebro de um elefante pesa cerca de 5 kg.",
+    "A Estátua da Liberdade era originalmente da cor do cobre.",
+    "O medo de espaços vazios chama-se cenofobia.",
+    "Os ratos multiplicam-se tão rapidamente que, em 18 meses, dois ratos podem ter mais de um milhão de descendentes.",
+    "O primeiro email foi enviado em 1971.",
+    "As aranhas são aracnídeos, não insetos.",
+    "O coração de um camarão está na sua cabeça.",
+    "O nome do Bluetooth vem de um rei viking do século X, Harald Bluetooth.",
+    "O recorde mundial para o maior número de flexões sem parar é de 10.507.",
+    "O deserto do Saara já foi uma floresta tropical exuberante.",
+    "Os tubarões existem há mais tempo do que as árvores.",
+    "O nome completo do Pato Donald é Donald Fauntleroy Duck.",
+    "A Coca-Cola seria verde se não fossem adicionados corantes.",
+    "O corpo humano produz 25 milhões de novas células a cada segundo.",
+    "Os pinguins propõem casamento oferecendo uma pedra à sua parceira.",
+    "O primeiro filme a usar efeitos gerados por computador foi 'Westworld' em 1973.",
+    "O planeta Vénus gira na direção oposta à da maioria dos outros planetas.",
+    "O espirro viaja a cerca de 160 km/h.",
+    "As corujas não conseguem mover os seus olhos.",
+    "O nome 'LEGO' vem da frase dinamarquesa 'leg godt', que significa 'brincar bem'.",
+    "O maior floco de neve já registado tinha 38 cm de diâmetro.",
+    "A pele é o maior órgão do corpo humano.",
+    "O nome original da Nike era Blue Ribbon Sports.",
+    "Os gatos não conseguem sentir o sabor doce.",
+    "O crânio humano é composto por 22 ossos.",
+    "O primeiro despertador só conseguia tocar às 4 da manhã.",
+    "O koala dorme cerca de 22 horas por dia.",
+    "A palavra 'abacate' vem da palavra asteca para 'testículo'.",
+    "O som viaja quatro vezes mais rápido na água do que no ar.",
+    "O nome original do Twitter era 'twttr'.",
+    "O cérebro humano encolhe à medida que envelhecemos.",
+    "A probabilidade de ser atingido por um raio é maior do que a de ganhar na lotaria.",
+    "O nome 'Wendy' foi inventado para o livro 'Peter Pan'.",
+    "As formigas conseguem levantar 50 vezes o seu próprio peso.",
+    "O primeiro romance escrito numa máquina de escrever foi 'As Aventuras de Tom Sawyer'.",
+    "O nome do estado do Alasca vem de uma palavra aleúte que significa 'grande terra'.",
+    "Os gatos têm cinco dedos nas patas dianteiras e quatro nas traseiras.",
+    "O nome 'robô' vem da palavra checa 'robota', que significa 'trabalho forçado'.",
+    "O primeiro vídeo do YouTube foi carregado em 23 de abril de 2005.",
+    "A palavra 'nerd' foi usada pela primeira vez no livro de Dr. Seuss 'If I Ran the Zoo'.",
+    "O coração humano para por um milissegundo quando espirramos.",
+    "O nome original da Pepsi era 'Brad's Drink'.",
+    "Os elefantes são os únicos mamíferos que não conseguem saltar.",
+    "O nome 'jeans' vem da cidade de Génova, em Itália.",
+    "O primeiro tweet foi enviado em 21 de março de 2006.",
+    "A palavra 'quarentena' vem da palavra italiana 'quaranta giorni', que significa '40 dias'.",
+    "O nome 'sanduíche' vem de John Montagu, o 4º Conde de Sandwich.",
+    "O primeiro website foi criado em 1991.",
+    "A palavra 'assassino' vem da palavra árabe 'hashishin'.",
+    "O nome 'gorila' vem de uma palavra grega que significa 'tribo de mulheres peludas'.",
+    "O primeiro telemóvel com câmara foi lançado no Japão em 2000.",
+    "A palavra 'músculo' vem da palavra latina 'musculus', que significa 'ratinho'.",
+    "O nome 'helicóptero' vem das palavras gregas 'helix' (espiral) e 'pteron' (asa).",
+    "O primeiro videojogo foi criado em 1958.",
+    "A palavra 'escola' vem da palavra grega 'skhole', que significa 'lazer'.",
+    "O nome 'pânico' vem do deus grego Pan.",
+    "O primeiro livro impresso foi a Bíblia de Gutenberg, em 1455.",
+    "A palavra 'álcool' vem da palavra árabe 'al-kuhl'.",
+    "O nome 'malária' vem da palavra italiana 'mala aria', que significa 'mau ar'.",
+    "O primeiro filme a cores foi 'The World, the Flesh and the Devil', de 1914.",
+    "A palavra 'salário' vem da palavra latina 'salarium', que se refere ao sal que era dado aos soldados romanos.",
+    "O nome 'canário' vem das Ilhas Canárias, e não o contrário.",
+    "O primeiro carro foi inventado em 1886 por Karl Benz.",
+    "A palavra 'trivial' vem do latim 'trivium', que era o ponto de encontro de três estradas.",
+    "O nome 'vulcão' vem do deus romano do fogo, Vulcano.",
+    "O primeiro avião foi inventado em 1903 pelos irmãos Wright.",
+    "A palavra 'ginásio' vem da palavra grega 'gymnasion', que significa 'lugar para se exercitar nu'.",
+    "O nome 'eco' vem da ninfa grega Eco.",
+    "O primeiro computador foi o ENIAC, em 1946.",
+    "A palavra 'calendário' vem da palavra latina 'kalendarium', que era o livro de contas dos romanos.",
+    "O nome 'narcisismo' vem da figura mitológica grega Narciso.",
+    "O primeiro satélite artificial foi o Sputnik 1, lançado em 1957.",
+    "A palavra 'biblioteca' vem da palavra grega 'bibliotheke', que significa 'caixa de livros'.",
+    "O nome 'hipocondria' vem da palavra grega 'hypokhondrion', que se refere à área do abdómen abaixo das costelas.",
+    "O primeiro homem no espaço foi Yuri Gagarin, em 1961.",
+    "A palavra 'sarcasmo' vem da palavra grega 'sarkazein', que significa 'rasgar a carne'.",
+    "O nome 'pijama' vem da palavra persa 'payjama', que significa 'vestimenta para as pernas'.",
+    "O primeiro homem na Lua foi Neil Armstrong, em 1969.",
+        ]
+
+        # --- CARTÃO DE BOAS-VINDAS ---
+        welcome_card = QFrame()
+        welcome_card.setObjectName("welcomeCard")
+        welcome_layout = QHBoxLayout(welcome_card)
+
+        logo_label = QLabel()
         logo_pixmap = QPixmap(resource_path("logo.png"))
-        logo_redimensionada = logo_pixmap.scaled(150, 90, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-        self.label_logo.setPixmap(logo_redimensionada)
+        logo_redimensionada = logo_pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        logo_label.setPixmap(logo_redimensionada)
         
-        self.label_boas_vindas = QLabel("Bem-vindo de volta!")
+        message_layout = QVBoxLayout()
+        self.label_boas_vindas = QLabel("Bem-vindo(a)!")
         self.label_boas_vindas.setObjectName("welcomeMessage")
+        self.label_curiosidade = QLabel("Você sabia que...")
+        self.label_curiosidade.setObjectName("curiosityMessage")
+        self.label_curiosidade.setWordWrap(True)
+        message_layout.addWidget(self.label_boas_vindas)
+        message_layout.addWidget(self.label_curiosidade)
+        
+        welcome_layout.addWidget(logo_label)
+        welcome_layout.addLayout(message_layout)
+        welcome_layout.addStretch(1)
 
-        header_layout.addWidget(self.label_logo)
-        header_layout.addWidget(self.label_boas_vindas)
-        header_layout.addStretch(1)
+        # --- TÍTULOS DE SECÇÃO ---
+        kpi_title = QLabel("Resumo do Sistema")
+        kpi_title.setObjectName("dashboardSectionTitle")
+        action_title = QLabel("Operações Comuns")
+        action_title.setObjectName("dashboardSectionTitle")
 
+        # --- KPIs INTERATIVOS ---
         kpi_layout = QHBoxLayout()
         self.card_produtos = InteractiveKPICard("Produtos", icone="📦")
         self.card_fornecedores = InteractiveKPICard("Fornecedores", icone="🚚")
@@ -2511,6 +2679,7 @@ class DashboardWidget(QWidget):
         kpi_layout.addWidget(self.card_fornecedores)
         kpi_layout.addWidget(self.card_valor_estoque)
 
+        # --- BOTÕES DE AÇÃO PRINCIPAIS ---
         action_layout = QHBoxLayout()
         self.btn_atalho_entrada = QPushButton("➡️\n\nNova Entrada")
         self.btn_atalho_entrada.setObjectName("btnDashboardAction")
@@ -2519,19 +2688,30 @@ class DashboardWidget(QWidget):
         action_layout.addWidget(self.btn_atalho_entrada)
         action_layout.addWidget(self.btn_atalho_saida)
 
-        self.layout.addLayout(header_layout)
-        self.layout.addWidget(QLabel("Resumo do Sistema"))
+        # Adicionando tudo ao layout principal
+        self.layout.addWidget(welcome_card)
+        self.layout.addWidget(kpi_title)
         self.layout.addLayout(kpi_layout)
-        self.layout.addWidget(QLabel("Operações Comuns"))
+        self.layout.addWidget(action_title)
         self.layout.addLayout(action_layout)
         self.layout.addStretch(1)
 
+        # --- Conexões ---
         self.card_produtos.clicked.connect(self.ir_para_produtos.emit)
         self.card_fornecedores.clicked.connect(self.ir_para_fornecedores.emit)
         self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
         self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
 
-    def carregar_dados_dashboard(self):
+    def atualizar_mensagem_boas_vindas(self, nome_utilizador):
+        """Atualiza a mensagem de boas-vindas com o nome do utilizador e uma curiosidade."""
+        primeiro_nome = nome_utilizador.split(" ")[0]
+        curiosidade = random.choice(self.lista_curiosidades)
+        
+        self.label_boas_vindas.setText(f"Bem-vindo(a), {primeiro_nome}!")
+        self.label_curiosidade.setText(f"<i>Você sabia que... {curiosidade}</i>")
+
+    def carregar_dados_dashboard(self, nome_utilizador):
+        self.atualizar_mensagem_boas_vindas(nome_utilizador)
         self.carregar_kpis()
 
     def carregar_kpis(self):
@@ -2548,6 +2728,7 @@ class DashboardWidget(QWidget):
                 self.card_valor_estoque.set_valor(valor_formatado)
         except requests.exceptions.RequestException:
             print("Erro ao carregar KPIs do dashboard.")
+
         
 # ==============================================================================
 # 6. CLASSE DA JANELA DE LOGIN

@@ -109,6 +109,14 @@ QPushButton#btnLogoff {
 QPushButton#btnLogoff:hover { background-color: #5a6268; }
 QPushButton#btnLogoff:pressed { background-color: #495057; }
 
+/* Botão de Impressão */
+QPushButton#btnPrint {
+    background-color: #f0ad4e;
+    color: white;
+}
+QPushButton#btnPrint:hover { background-color: #eea236; }
+QPushButton#btnPrint:pressed { background-color: #ec971f; }
+
 
 /* --- TABELAS E LISTAS --- */
 QTableWidget, QListWidget {
@@ -147,31 +155,34 @@ QTableWidget::item:selected, QListWidget::item:selected {
     font-weight: bold;
 }
 
-/* --- DASHBOARD --- */
-QLabel#dashboardTitle {
-    font-size: 18px;
-    font-weight: bold;
-    margin-bottom: 10px;
-    margin-top: 15px;
+/* --- DASHBOARD MINIMALISTA --- */
+QFrame#welcomeCard {
+    background-color: #3c3c3c;
+    border-radius: 8px;
+    padding: 20px;
 }
 
-QLabel#dashboardLogo {
-    margin-bottom: 20px;
-}
-
-/* ============================================= */
-/* ESTILOS PARA O DASHBOARD MINIMALISTA          */
-/* ============================================= */
-
-/* Mensagem de Boas-vindas */
 QLabel#welcomeMessage {
     font-size: 28px;
-    font-weight: 300; /* Uma fonte mais leve */
+    font-weight: 600;
     color: #f0f0f0;
-    margin-left: 20px;
 }
 
-/* Cartão de KPI Interativo */
+QLabel#curiosityMessage {
+    font-size: 15px;
+    color: #a0a0a0;
+    font-style: italic;
+}
+
+QLabel#dashboardSectionTitle {
+    font-size: 16px;
+    font-weight: bold;
+    color: #f0f0f0;
+    margin-top: 10px;
+    border-bottom: 1px solid #4a4a4a;
+    padding-bottom: 5px;
+}
+
 QFrame#kpiCard {
     background-color: #3c3c3c;
     border: 1px solid #4a4a4a;
@@ -183,25 +194,21 @@ QFrame#kpiCard:hover {
     border: 1px solid #0078d7;
 }
 
-/* Ícone do KPI */
 QLabel#kpiIcon {
     font-size: 20px;
 }
 
-/* Título do KPI (ex: "Produtos") */
 QLabel#kpiTitle {
-    color: #a0a0a0; /* Um cinza mais claro para o texto secundário */
+    color: #a0a0a0;
     font-size: 14px;
 }
 
-/* Valor do KPI (ex: "150") */
 QLabel#kpiValue {
     font-size: 26px;
-    font-weight: 600; /* Semi-bold */
+    font-weight: 600;
     color: #f0f0f0;
 }
 
-/* Botões de Ação Grandes do Dashboard */
 QPushButton#btnDashboardAction {
     background-color: #3c3c3c;
     border: 1px solid #4a4a4a;
@@ -216,22 +223,4 @@ QPushButton#btnDashboardAction:hover {
     background-color: #4a4a4a;
     color: #0078d7;
     border: 1px solid #0078d7;
-}
-
-/* ============================================= */
-/* ESTILO PARA O BOTÃO DE GERAR ETIQUETAS        */
-/* ============================================= */
-
-QPushButton#btnPrint {
-    background-color: #f0ad4e; /* Laranja/Amarelo para uma ação secundária */
-    color: white;
-    font-weight: bold;
-}
-
-QPushButton#btnPrint:hover {
-    background-color: #eea236;
-}
-
-QPushButton#btnPrint:pressed {
-    background-color: #ec971f;
 }
