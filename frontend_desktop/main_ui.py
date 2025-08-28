@@ -668,11 +668,13 @@ class MudarSenhaDialog(QDialog):
 
 class QuantidadeDialog(QDialog):
     """Diálogo para adicionar ou remover uma quantidade de estoque."""
-    estoque_modificado = Signal(int) # Sinal que emite o novo saldo
+    # O sinal agora emite o CÓDIGO do produto (string) para acionar uma nova busca
+    estoque_modificado = Signal(str)
 
-    def __init__(self, parent, produto_id, produto_nome, operacao):
+    def __init__(self, parent, produto_id, produto_nome, produto_codigo, operacao):
         super().__init__(parent)
         self.produto_id = produto_id
+        self.produto_codigo = produto_codigo # Guarda o código para emitir no sinal
         self.operacao = operacao
         acao_texto = "Adicionar" if operacao == "Entrada" else "Remover"
         self.setWindowTitle(f"{acao_texto} Estoque")
@@ -706,10 +708,7 @@ class QuantidadeDialog(QDialog):
             QMessageBox.warning(self, "Erro", "Por favor, insira uma quantidade válida maior que zero.")
             return
 
-        dados = {
-            "id_produto": self.produto_id,
-            "quantidade": int(quantidade_str)
-        }
+        dados = { "id_produto": self.produto_id, "quantidade": int(quantidade_str) }
         endpoint = "/api/estoque/entrada"
 
         if self.operacao == "Saida":
@@ -725,16 +724,15 @@ class QuantidadeDialog(QDialog):
         try:
             response = requests.post(f"{API_BASE_URL}{endpoint}", headers=headers, json=dados)
             if response and response.status_code == 201:
-                # Após o sucesso, busca o novo saldo e emite o sinal
-                saldo_response = requests.get(f"{API_BASE_URL}/api/estoque/saldos?search={self.produto_id}", headers=headers)
-                if saldo_response and saldo_response.status_code == 200:
-                    novo_saldo = saldo_response.json()[0]['saldo_atual']
-                    self.estoque_modificado.emit(novo_saldo)
+                # --- A LÓGICA CORRIGIDA ESTÁ AQUI ---
+                # Em vez de tentar adivinhar o saldo, apenas emitimos o código do produto
+                self.estoque_modificado.emit(self.produto_codigo)
                 super().accept()
             else:
                 QMessageBox.warning(self, "Erro na API", response.json().get('erro', 'Ocorreu um erro.'))
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", str(e))
+
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
@@ -2192,18 +2190,16 @@ class TerminalWidget(QWidget):
         self.barcode_buffer = ""
         self.barcode_timer = QTimer(self)
         self.barcode_timer.setSingleShot(True)
-        self.barcode_timer.setInterval(200) # Tempo de espera entre os caracteres
+        self.barcode_timer.setInterval(200)
         self.barcode_timer.timeout.connect(self.processar_codigo)
         
         self.produto_atual = None
 
-        # --- Painel Principal ---
         main_panel = QFrame()
         main_panel.setObjectName("terminalMainPanel")
         main_panel_layout = QVBoxLayout(main_panel)
         main_panel_layout.setSpacing(20)
 
-        # Secção Superior: Nome e Quantidade
         top_section_layout = QHBoxLayout()
         self.label_nome = QLabel("Passe um código de barras no leitor...")
         self.label_nome.setObjectName("terminalProductName")
@@ -2216,10 +2212,9 @@ class TerminalWidget(QWidget):
         self.label_qtd_valor.setObjectName("terminalQuantityValue")
         qtd_layout.addWidget(self.label_qtd_valor)
         
-        top_section_layout.addWidget(self.label_nome, 4) # Proporção 4
-        top_section_layout.addWidget(self.label_qtd_box, 1) # Proporção 1
+        top_section_layout.addWidget(self.label_nome, 4)
+        top_section_layout.addWidget(self.label_qtd_box, 1)
 
-        # Botões de Ação
         action_buttons_layout = QHBoxLayout()
         self.btn_remover = QPushButton("➖")
         self.btn_remover.setObjectName("btnTerminalRemove")
@@ -2233,7 +2228,6 @@ class TerminalWidget(QWidget):
         main_panel_layout.addLayout(top_section_layout)
         main_panel_layout.addLayout(action_buttons_layout)
 
-        # --- Painel Inferior: Descrição e Código ---
         bottom_panel = QFrame()
         bottom_panel.setObjectName("terminalBottomPanel")
         bottom_panel_layout = QVBoxLayout(bottom_panel)
@@ -2244,17 +2238,15 @@ class TerminalWidget(QWidget):
         bottom_panel_layout.addWidget(self.label_descricao)
         bottom_panel_layout.addWidget(self.label_codigo)
 
-        self.layout.addWidget(main_panel, 2) # Proporção 2
-        self.layout.addWidget(bottom_panel, 1) # Proporção 1
+        self.layout.addWidget(main_panel, 2)
+        self.layout.addWidget(bottom_panel, 1)
 
-        # Conexões
         self.btn_adicionar.clicked.connect(lambda: self.abrir_dialogo_quantidade("Entrada"))
         self.btn_remover.clicked.connect(lambda: self.abrir_dialogo_quantidade("Saida"))
         
         self.resetar_tela()
 
     def keyPressEvent(self, event):
-        """Captura os eventos de teclado para ler o código de barras."""
         if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
             self.processar_codigo()
         else:
@@ -2313,15 +2305,19 @@ class TerminalWidget(QWidget):
         if not self.produto_atual:
             return
         
-        dialog = QuantidadeDialog(self, self.produto_atual['id_produto'], self.produto_atual['nome'], operacao)
-        dialog.estoque_modificado.connect(self.atualizar_quantidade_em_tempo_real)
+        dialog = QuantidadeDialog(self,
+                                  self.produto_atual['id_produto'],
+                                  self.produto_atual['nome'],
+                                  self.produto_atual['codigo'],
+                                  operacao)
+        dialog.estoque_modificado.connect(self.reprocessar_codigo_apos_modificacao)
         dialog.exec()
 
-    def atualizar_quantidade_em_tempo_real(self, novo_saldo):
-        """Atualiza o saldo na tela após uma operação bem-sucedida."""
-        if self.produto_atual:
-            self.produto_atual['saldo_atual'] = novo_saldo
-            self.label_qtd_valor.setText(str(novo_saldo))
+    def reprocessar_codigo_apos_modificacao(self, codigo):
+        """Recebe o sinal do diálogo e aciona uma nova busca completa para o produto."""
+        print(f"Atualização recebida para o código: {codigo}. A reprocessar...")
+        self.barcode_buffer = codigo
+        self.processar_codigo()
 
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
