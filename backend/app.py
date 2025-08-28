@@ -15,6 +15,8 @@ from datetime import datetime
 from datetime import timedelta
 from sqlalchemy import case, or_
 from sqlalchemy.orm import joinedload
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
 from sqlalchemy.sql import func
 import csv
 import io
@@ -511,6 +513,22 @@ def get_produto_por_codigo(codigo):
         return jsonify({'erro': str(e)}), 500
     
     
+ 
+ 
+@app.route('/api/produtos/<int:id_produto>/estoque', methods=['GET'])
+@jwt_required()
+def get_saldo_estoque_produto(id_produto):
+    """Calcula e retorna o saldo atual de um produto específico."""
+    try:
+        # Garante que o produto existe antes de calcular
+        Produto.query.get_or_404(id_produto)
+        
+        saldo_calculado = calcular_saldo_produto(id_produto)
+        return jsonify({'id_produto': id_produto, 'saldo_atual': saldo_calculado}), 200
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500 
+ 
+ 
     
 # Dentro do app.py
 
@@ -621,30 +639,45 @@ def remover_natureza_do_produto(id_produto, id_natureza):
 @app.route('/api/estoque/entrada', methods=['POST'])
 @jwt_required()
 def registrar_entrada():
-    """Registra uma nova entrada de estoque para um produto."""
+    """Regista uma nova entrada de estoque e retorna o novo saldo de forma fiável."""
     try:
         dados = request.get_json()
         if 'id_produto' not in dados or 'quantidade' not in dados:
             return jsonify({'erro': 'Campos obrigatórios em falta: id_produto, quantidade'}), 400
 
+        id_produto = dados['id_produto']
+        quantidade_entrada = dados['quantidade']
+        
+        # 1. Busca o saldo atual ANTES da operação
+        saldo_atual = calcular_saldo_produto(id_produto)
+
         id_usuario_logado = get_jwt_identity()
         nova_entrada = MovimentacaoEstoque(
-            id_produto=dados['id_produto'],
-            quantidade=dados['quantidade'],
+            id_produto=id_produto,
+            quantidade=quantidade_entrada,
             id_usuario=id_usuario_logado,
             tipo='Entrada'
         )
         db.session.add(nova_entrada)
         db.session.commit()
-        return jsonify({'mensagem': 'Entrada de estoque registada com sucesso!'}), 201
+        
+        # 2. Calcula o novo saldo em Python para garantir a precisão
+        novo_saldo = saldo_atual + quantidade_entrada
+        return jsonify({
+            'mensagem': 'Entrada de estoque registada com sucesso!',
+            'novo_saldo': novo_saldo
+        }), 201
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
 
+
+
 @app.route('/api/estoque/saida', methods=['POST'])
 @jwt_required()
 def registrar_saida():
-    """Registra uma nova saída de estoque para um produto."""
+    """Regista uma nova saída de estoque e retorna o novo saldo de forma fiável."""
     try:
         dados = request.get_json()
         required_fields = ['id_produto', 'quantidade', 'motivo_saida']
@@ -654,6 +687,7 @@ def registrar_saida():
         id_produto = dados['id_produto']
         quantidade_saida = dados['quantidade']
         
+        # 1. Busca o saldo atual ANTES da operação
         saldo_atual = calcular_saldo_produto(id_produto)
         if saldo_atual < quantidade_saida:
             return jsonify({'erro': f'Estoque insuficiente. Saldo atual: {saldo_atual}'}), 400
@@ -668,11 +702,17 @@ def registrar_saida():
         )
         db.session.add(nova_saida)
         db.session.commit()
-        return jsonify({'mensagem': 'Saída de estoque registada com sucesso!'}), 201
+        
+        # 2. Calcula o novo saldo em Python para garantir a precisão
+        novo_saldo = saldo_atual - quantidade_saida
+        return jsonify({
+            'mensagem': 'Saída de estoque registada com sucesso!',
+            'novo_saldo': novo_saldo
+        }), 201
+
     except Exception as e:
         db.session.rollback()
         return jsonify({'erro': str(e)}), 500
-
 
 
 @app.route('/api/estoque/saldos', methods=['GET'])
@@ -1216,33 +1256,42 @@ from datetime import datetime
 
 def gerar_pdf_etiquetas(produtos):
     """
-    Gera um PDF com etiquetas de 100mm x 62mm (horizontal) para os produtos fornecidos, sem o preço.
+    Gera um PDF onde cada página é uma etiqueta de 62mm x 100mm,
+    preenchida com os dados de um único produto.
     """
     buffer = io.BytesIO()
     
-    # --- ALTERAÇÃO 1: Invertemos a largura e a altura para a orientação paisagem ---
-    largura_etiqueta, altura_etiqueta = 100 * mm, 62 * mm
-    doc = SimpleDocTemplate(buffer, pagesize=(largura_etiqueta, altura_etiqueta),
+    # --- CORREÇÃO DEFINITIVA: O tamanho da página é o tamanho da etiqueta ---
+    largura_pagina, altura_pagina = 62 * mm, 100 * mm
+    doc = SimpleDocTemplate(buffer, pagesize=(largura_pagina, altura_pagina),
                             leftMargin=5*mm, rightMargin=5*mm, topMargin=5*mm, bottomMargin=5*mm)
     
     elementos = []
     styles = getSampleStyleSheet()
-    # Ajusta o tamanho da fonte para caber melhor na etiqueta
     styles['Normal'].fontSize = 12
     styles['Normal'].leading = 14 # Espaçamento entre linhas
     
+    style_codigo = ParagraphStyle(name='CodigoStyle', parent=styles['Normal'], alignment=TA_CENTER)
+    
+    # Itera através de cada produto para criar uma página para cada um
     for produto in produtos:
         # Informações do Produto
         nome_produto = Paragraph(f"<b>{produto.nome}</b>", styles['Normal'])
         
         # Geração do Código de Barras
-        codigo_de_barras = code128.Code128(produto.codigo, barHeight=20*mm, barWidth=0.5*mm)
+        codigo_de_barras = code128.Code128(produto.codigo, barHeight=20*mm, barWidth=0.4*mm)
         
-        # --- ALTERAÇÃO 2: Removemos o preço da lista de elementos ---
+        # Cria um parágrafo com o código do produto por extenso
+        codigo_texto = Paragraph(produto.codigo, style_codigo)
+        
+        # Adiciona os elementos à página/etiqueta
         elementos.append(nome_produto)
         elementos.append(Spacer(1, 8 * mm))
         elementos.append(codigo_de_barras)
+        elementos.append(Spacer(1, 2 * mm))
+        elementos.append(codigo_texto)
         
+        # Adiciona uma quebra de página para começar a próxima etiqueta
         elementos.append(PageBreak())
 
     # Remove a última quebra de página desnecessária
@@ -1252,6 +1301,7 @@ def gerar_pdf_etiquetas(produtos):
     doc.build(elementos)
     buffer.seek(0)
     return buffer
+
 
 
 def gerar_inventario_pdf(dados):
