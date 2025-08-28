@@ -224,3 +224,69 @@ QPushButton#btnDashboardAction:hover {
     color: #0078d7;
     border: 1px solid #0078d7;
 }
+
+
+/* ============================================= */
+/* ESTILOS PARA O TERMINAL DE CONSULTA           */
+/* ============================================= */
+
+#terminalWidget {
+    background-color: #2d2d2d;
+}
+
+#terminalMainPanel, #terminalBottomPanel {
+    background-color: #3c3c3c;
+    border: 1px solid #4a4a4a;
+    border-radius: 8px;
+}
+
+#terminalProductName {
+    font-size: 36px;
+    font-weight: 600; /* semi-bold */
+    color: #f0f0f0;
+    padding: 20px;
+}
+
+#terminalQuantityBox {
+    background-color: #2d2d2d;
+    border-radius: 8px;
+    max-width: 150px;
+}
+
+#terminalQuantityValue {
+    font-size: 48px;
+    font-weight: bold;
+    color: #0078d7;
+    text-align: center;
+}
+
+#terminalDescription, #terminalCode {
+    font-size: 16px;
+    color: #a0a0a0;
+    padding: 10px;
+}
+
+QPushButton#btnTerminalAdd, QPushButton#btnTerminalRemove {
+    font-size: 32px;
+    font-weight: bold;
+    min-width: 80px;
+    max-width: 80px;
+    min-height: 80px;
+    max-height: 80px;
+    border-radius: 40px; /* Círculo perfeito */
+    padding-bottom: 5px; /* Ajuste para o ícone ficar centrado */
+}
+
+QPushButton#btnTerminalAdd {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #28a745, stop: 1 #218838);
+}
+QPushButton#btnTerminalAdd:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #2ebf4f, stop: 1 #259d41);
+}
+
+QPushButton#btnTerminalRemove {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #dc3545, stop: 1 #c82333);
+}
+QPushButton#btnTerminalRemove:hover {
+    background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #e44d5a, stop: 1 #d32d3e);
+}

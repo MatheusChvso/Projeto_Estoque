@@ -39,7 +39,7 @@ from config import SERVER_IP
 # ==============================================================================
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
-APP_VERSION = "2.1" #26/08/2025
+APP_VERSION = "2.2" #27/08/2025
 
 class SignalHandler(QObject):
     """Um gestor central para sinais globais da aplicação."""
@@ -666,6 +666,75 @@ class MudarSenhaDialog(QDialog):
         except requests.exceptions.RequestException as e:
             QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
+class QuantidadeDialog(QDialog):
+    """Diálogo para adicionar ou remover uma quantidade de estoque."""
+    estoque_modificado = Signal(int) # Sinal que emite o novo saldo
+
+    def __init__(self, parent, produto_id, produto_nome, operacao):
+        super().__init__(parent)
+        self.produto_id = produto_id
+        self.operacao = operacao
+        acao_texto = "Adicionar" if operacao == "Entrada" else "Remover"
+        self.setWindowTitle(f"{acao_texto} Estoque")
+        self.setMinimumWidth(350)
+
+        self.layout = QVBoxLayout(self)
+        form_layout = QFormLayout()
+
+        self.label_produto = QLabel(f"<b>Produto:</b> {produto_nome}")
+        self.input_quantidade = QLineEdit()
+        self.input_quantidade.setValidator(QDoubleValidator(0, 99999, 0))
+        self.input_motivo = QLineEdit()
+
+        form_layout.addRow(self.label_produto)
+        form_layout.addRow("Quantidade:", self.input_quantidade)
+        if self.operacao == "Saida":
+            form_layout.addRow("Motivo da Saída:", self.input_motivo)
+        
+        self.botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        
+        self.layout.addLayout(form_layout)
+        self.layout.addWidget(self.botoes)
+
+        self.botoes.accepted.connect(self.accept)
+        self.botoes.rejected.connect(self.reject)
+        self.input_quantidade.setFocus()
+
+    def accept(self):
+        quantidade_str = self.input_quantidade.text()
+        if not quantidade_str or int(quantidade_str) <= 0:
+            QMessageBox.warning(self, "Erro", "Por favor, insira uma quantidade válida maior que zero.")
+            return
+
+        dados = {
+            "id_produto": self.produto_id,
+            "quantidade": int(quantidade_str)
+        }
+        endpoint = "/api/estoque/entrada"
+
+        if self.operacao == "Saida":
+            motivo = self.input_motivo.text().strip()
+            if not motivo:
+                QMessageBox.warning(self, "Erro", "O motivo é obrigatório para saídas de estoque.")
+                return
+            dados["motivo_saida"] = motivo
+            endpoint = "/api/estoque/saida"
+        
+        global access_token
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.post(f"{API_BASE_URL}{endpoint}", headers=headers, json=dados)
+            if response and response.status_code == 201:
+                # Após o sucesso, busca o novo saldo e emite o sinal
+                saldo_response = requests.get(f"{API_BASE_URL}/api/estoque/saldos?search={self.produto_id}", headers=headers)
+                if saldo_response and saldo_response.status_code == 200:
+                    novo_saldo = saldo_response.json()[0]['saldo_atual']
+                    self.estoque_modificado.emit(novo_saldo)
+                super().accept()
+            else:
+                QMessageBox.warning(self, "Erro na API", response.json().get('erro', 'Ocorreu um erro.'))
+        except requests.exceptions.RequestException as e:
+            QMessageBox.critical(self, "Erro de Conexão", str(e))
 # ==============================================================================
 # 4. WIDGETS DE CONTEÚDO (AS "TELAS" PRINCIPAIS)
 # ==============================================================================
@@ -2112,6 +2181,148 @@ class UsuariosWidget(QWidget):
             except requests.exceptions.RequestException as e:
                 QMessageBox.critical(self, "Erro de Conexão", f"Não foi possível conectar ao servidor: {e}")
 
+class TerminalWidget(QWidget):
+    """Tela de consulta rápida otimizada para leitor de código de barras."""
+    def __init__(self):
+        super().__init__()
+        self.setObjectName("terminalWidget")
+        self.layout = QVBoxLayout(self)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.barcode_buffer = ""
+        self.barcode_timer = QTimer(self)
+        self.barcode_timer.setSingleShot(True)
+        self.barcode_timer.setInterval(200) # Tempo de espera entre os caracteres
+        self.barcode_timer.timeout.connect(self.processar_codigo)
+        
+        self.produto_atual = None
+
+        # --- Painel Principal ---
+        main_panel = QFrame()
+        main_panel.setObjectName("terminalMainPanel")
+        main_panel_layout = QVBoxLayout(main_panel)
+        main_panel_layout.setSpacing(20)
+
+        # Secção Superior: Nome e Quantidade
+        top_section_layout = QHBoxLayout()
+        self.label_nome = QLabel("Passe um código de barras no leitor...")
+        self.label_nome.setObjectName("terminalProductName")
+        self.label_nome.setWordWrap(True)
+        
+        self.label_qtd_box = QFrame()
+        self.label_qtd_box.setObjectName("terminalQuantityBox")
+        qtd_layout = QVBoxLayout(self.label_qtd_box)
+        self.label_qtd_valor = QLabel("--")
+        self.label_qtd_valor.setObjectName("terminalQuantityValue")
+        qtd_layout.addWidget(self.label_qtd_valor)
+        
+        top_section_layout.addWidget(self.label_nome, 4) # Proporção 4
+        top_section_layout.addWidget(self.label_qtd_box, 1) # Proporção 1
+
+        # Botões de Ação
+        action_buttons_layout = QHBoxLayout()
+        self.btn_remover = QPushButton("➖")
+        self.btn_remover.setObjectName("btnTerminalRemove")
+        self.btn_adicionar = QPushButton("➕")
+        self.btn_adicionar.setObjectName("btnTerminalAdd")
+        action_buttons_layout.addStretch(1)
+        action_buttons_layout.addWidget(self.btn_remover)
+        action_buttons_layout.addWidget(self.btn_adicionar)
+        action_buttons_layout.addStretch(1)
+
+        main_panel_layout.addLayout(top_section_layout)
+        main_panel_layout.addLayout(action_buttons_layout)
+
+        # --- Painel Inferior: Descrição e Código ---
+        bottom_panel = QFrame()
+        bottom_panel.setObjectName("terminalBottomPanel")
+        bottom_panel_layout = QVBoxLayout(bottom_panel)
+        self.label_descricao = QLabel("Descrição do produto aparecerá aqui.")
+        self.label_descricao.setObjectName("terminalDescription")
+        self.label_codigo = QLabel("Código: --")
+        self.label_codigo.setObjectName("terminalCode")
+        bottom_panel_layout.addWidget(self.label_descricao)
+        bottom_panel_layout.addWidget(self.label_codigo)
+
+        self.layout.addWidget(main_panel, 2) # Proporção 2
+        self.layout.addWidget(bottom_panel, 1) # Proporção 1
+
+        # Conexões
+        self.btn_adicionar.clicked.connect(lambda: self.abrir_dialogo_quantidade("Entrada"))
+        self.btn_remover.clicked.connect(lambda: self.abrir_dialogo_quantidade("Saida"))
+        
+        self.resetar_tela()
+
+    def keyPressEvent(self, event):
+        """Captura os eventos de teclado para ler o código de barras."""
+        if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.processar_codigo()
+        else:
+            self.barcode_buffer += event.text()
+            self.barcode_timer.start()
+
+    def processar_codigo(self):
+        codigo = self.barcode_buffer.strip()
+        self.barcode_buffer = ""
+        if not codigo:
+            return
+
+        self.label_nome.setText("A procurar...")
+        QApplication.processEvents()
+
+        global access_token
+        url = f"{API_BASE_URL}/api/estoque/saldos?search={codigo}"
+        headers = {'Authorization': f'Bearer {access_token}'}
+        try:
+            response = requests.get(url, headers=headers)
+            if response and response.status_code == 200:
+                resultados = response.json()
+                if resultados:
+                    self.produto_atual = resultados[0]
+                    self.atualizar_display()
+                else:
+                    self.produto_nao_encontrado()
+            else:
+                self.produto_nao_encontrado()
+        except requests.exceptions.RequestException:
+            self.produto_nao_encontrado("Erro de conexão.")
+
+    def atualizar_display(self):
+        self.label_nome.setText(self.produto_atual.get('nome', 'N/A'))
+        self.label_qtd_valor.setText(str(self.produto_atual.get('saldo_atual', '--')))
+        self.label_descricao.setText(self.produto_atual.get('descricao', 'Sem descrição.'))
+        self.label_codigo.setText(f"Código: {self.produto_atual.get('codigo', '--')}")
+        self.btn_adicionar.setEnabled(True)
+        self.btn_remover.setEnabled(True)
+
+    def produto_nao_encontrado(self, msg="Produto não encontrado."):
+        self.produto_atual = None
+        self.label_nome.setText(msg)
+        self.resetar_tela(manter_msg=True)
+
+    def resetar_tela(self, manter_msg=False):
+        if not manter_msg:
+            self.label_nome.setText("Passe um código de barras no leitor...")
+        self.label_qtd_valor.setText("--")
+        self.label_descricao.setText("Descrição do produto aparecerá aqui.")
+        self.label_codigo.setText("Código: --")
+        self.btn_adicionar.setEnabled(False)
+        self.btn_remover.setEnabled(False)
+
+    def abrir_dialogo_quantidade(self, operacao):
+        if not self.produto_atual:
+            return
+        
+        dialog = QuantidadeDialog(self, self.produto_atual['id_produto'], self.produto_atual['nome'], operacao)
+        dialog.estoque_modificado.connect(self.atualizar_quantidade_em_tempo_real)
+        dialog.exec()
+
+    def atualizar_quantidade_em_tempo_real(self, novo_saldo):
+        """Atualiza o saldo na tela após uma operação bem-sucedida."""
+        if self.produto_atual:
+            self.produto_atual['saldo_atual'] = novo_saldo
+            self.label_qtd_valor.setText(str(novo_saldo))
+
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
@@ -2141,6 +2352,7 @@ class JanelaPrincipal(QMainWindow):
             self.tela_naturezas = NaturezasWidget()
             self.tela_usuarios = None
             self.tela_importacao = ImportacaoWidget()
+            self.tela_terminal = TerminalWidget()
 
             self.stacked_widget.addWidget(self.tela_dashboard)
             self.stacked_widget.addWidget(self.tela_gestao_estoque) # <-- ADICIONADA
@@ -2150,6 +2362,7 @@ class JanelaPrincipal(QMainWindow):
             self.stacked_widget.addWidget(self.tela_fornecedores)
             self.stacked_widget.addWidget(self.tela_naturezas)
             self.stacked_widget.addWidget(self.tela_importacao)
+            self.stacked_widget.addWidget(self.tela_terminal)
         
             # --- BARRA DE MENUS ---
             menu_bar = self.menuBar()
@@ -2238,6 +2451,7 @@ class JanelaPrincipal(QMainWindow):
             self.btn_relatorios = QPushButton("📄 Relatórios")
             self.btn_fornecedores = QPushButton("🚚 Fornecedores")
             self.btn_naturezas = QPushButton("🌿 Naturezas")
+            self.btn_terminal = QPushButton("🛰️ Terminal")
             self.btn_usuarios = QPushButton("👥 Usuários")
             self.btn_logoff = QPushButton("🚪 Fazer Logoff")
             self.btn_logoff.setObjectName("btnLogoff")
@@ -2249,6 +2463,7 @@ class JanelaPrincipal(QMainWindow):
             self.layout_painel_lateral.addWidget(self.btn_relatorios)
             self.layout_painel_lateral.addWidget(self.btn_fornecedores)
             self.layout_painel_lateral.addWidget(self.btn_naturezas)
+            self.layout_painel_lateral.addWidget(self.btn_terminal)
             self.layout_painel_lateral.addStretch(1)
             self.layout_painel_lateral.addWidget(self.btn_logoff)
             
@@ -2263,6 +2478,7 @@ class JanelaPrincipal(QMainWindow):
             self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
             self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
             self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
+            self.btn_terminal.clicked.connect(self.mostrar_tela_terminal)
             self.btn_logoff.clicked.connect(self.logoff_requested.emit)
             
             # Conexões de sinais entre widgets
@@ -2270,6 +2486,7 @@ class JanelaPrincipal(QMainWindow):
             self.tela_dashboard.ir_para_fornecedores.connect(self.mostrar_tela_fornecedores)
             self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
             self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
+            self.tela_dashboard.ir_para_terminal.connect(self.mostrar_tela_terminal) 
             self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             self.tela_saida_rapida.estoque_atualizado.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             self.tela_importacao.produtos_importados_sucesso.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
@@ -2369,6 +2586,10 @@ class JanelaPrincipal(QMainWindow):
         dialog = MudarSenhaDialog(self)
         dialog.exec()
 
+    def mostrar_tela_terminal(self):
+        """Mostra a tela do terminal e garante que ela tem o foco do teclado."""
+        self.stacked_widget.setCurrentWidget(self.tela_terminal)
+        self.tela_terminal.setFocus() # Essencial para capturar os eventos de teclado
 
 class SobreDialog(QDialog):
     """Uma janela 'Sobre' personalizada com um easter egg que toca um ficheiro de áudio."""
@@ -2487,6 +2708,7 @@ class DashboardWidget(QWidget):
     ir_para_fornecedores = Signal()
     ir_para_entrada_rapida = Signal()
     ir_para_saida_rapida = Signal()
+    ir_para_terminal = Signal()
 
     def __init__(self):
         super().__init__()
@@ -2685,8 +2907,11 @@ class DashboardWidget(QWidget):
         self.btn_atalho_entrada.setObjectName("btnDashboardAction")
         self.btn_atalho_saida = QPushButton("⬅️\n\nNova Saída")
         self.btn_atalho_saida.setObjectName("btnDashboardAction")
+        self.btn_atalho_terminal = QPushButton("🛰️\n\nTerminal de Consulta")
+        self.btn_atalho_terminal.setObjectName("btnDashboardAction")
         action_layout.addWidget(self.btn_atalho_entrada)
         action_layout.addWidget(self.btn_atalho_saida)
+        action_layout.addWidget(self.btn_atalho_terminal)
 
         # Adicionando tudo ao layout principal
         self.layout.addWidget(welcome_card)
@@ -2701,6 +2926,7 @@ class DashboardWidget(QWidget):
         self.card_fornecedores.clicked.connect(self.ir_para_fornecedores.emit)
         self.btn_atalho_entrada.clicked.connect(self.ir_para_entrada_rapida.emit)
         self.btn_atalho_saida.clicked.connect(self.ir_para_saida_rapida.emit)
+        self.btn_atalho_terminal.clicked.connect(self.ir_para_terminal.emit)
 
     def atualizar_mensagem_boas_vindas(self, nome_utilizador):
         """Atualiza a mensagem de boas-vindas com o nome do utilizador e uma curiosidade."""
