@@ -35,7 +35,7 @@ from config import SERVER_IP
 # ==============================================================================
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 
 class SignalHandler(QObject):
     """Um gestor central para sinais globais da aplicação."""
@@ -1572,76 +1572,125 @@ class UsuariosWidget(QWidget):
             except requests.exceptions.RequestException:
                 show_connection_error_message(self)
 
+# No seu ficheiro main_ui.py, substitua as suas classes TerminalWidget e JanelaPrincipal por estas:
+
 class TerminalWidget(QWidget):
+    """Tela de consulta rápida com design profissional e funcionalidade de adição."""
+    # Sinais para comunicar com a JanelaPrincipal
+    ir_para_novo_produto = Signal()
+
     def __init__(self):
         super().__init__()
         self.setObjectName("terminalWidget")
         self.layout = QVBoxLayout(self)
-        self.layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.layout.setContentsMargins(20, 10, 20, 20)
+
+        # --- ATRIBUTOS ---
         self.barcode_buffer = ""
         self.barcode_timer = QTimer(self)
         self.barcode_timer.setSingleShot(True)
         self.barcode_timer.setInterval(200)
-        self.barcode_timer.timeout.connect(self.processar_codigo)
         self.produto_atual = None
+
+        # --- 1. CRIAÇÃO DE TODOS OS WIDGETS PRIMEIRO ---
+        logo_label = QLabel()
+        logo_pixmap = QPixmap(resource_path("logo.png"))
+        logo_redimensionada = logo_pixmap.scaled(200, 80, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        logo_label.setPixmap(logo_redimensionada)
+        
+        titulo = QLabel("SUPER TERMINAL")
+        titulo.setObjectName("terminalHeaderTitle")
+        
+        self.btn_novo_produto = QPushButton("➕ Novo Produto")
+        self.btn_novo_produto.setObjectName("btnTerminalNewProduct")
+
         main_panel = QFrame()
         main_panel.setObjectName("terminalMainPanel")
-        main_panel_layout = QVBoxLayout(main_panel)
-        main_panel_layout.setSpacing(20)
-        top_section_layout = QHBoxLayout()
+        
         self.label_nome = QLabel("Passe um código de barras no leitor...")
         self.label_nome.setObjectName("terminalProductName")
         self.label_nome.setWordWrap(True)
+        
         self.label_qtd_box = QFrame()
         self.label_qtd_box.setObjectName("terminalQuantityBox")
-        qtd_layout = QVBoxLayout(self.label_qtd_box)
         self.label_qtd_valor = QLabel("--")
         self.label_qtd_valor.setObjectName("terminalQuantityValue")
-        qtd_layout.addWidget(self.label_qtd_valor)
-        top_section_layout.addWidget(self.label_nome, 4)
-        top_section_layout.addWidget(self.label_qtd_box, 1)
-        action_buttons_layout = QHBoxLayout()
-        self.btn_remover = QPushButton("➖")
-        self.btn_remover.setObjectName("btnTerminalRemove")
-        self.btn_adicionar = QPushButton("➕")
-        self.btn_adicionar.setObjectName("btnTerminalAdd")
-        action_buttons_layout.addStretch(1)
-        action_buttons_layout.addWidget(self.btn_remover)
-        action_buttons_layout.addWidget(self.btn_adicionar)
-        action_buttons_layout.addStretch(1)
-        main_panel_layout.addLayout(top_section_layout)
-        main_panel_layout.addLayout(action_buttons_layout)
+        
         bottom_panel = QFrame()
         bottom_panel.setObjectName("terminalBottomPanel")
-        bottom_panel_layout = QVBoxLayout(bottom_panel)
+        
         self.label_descricao = QLabel("Descrição do produto aparecerá aqui.")
         self.label_descricao.setObjectName("terminalDescription")
         self.label_codigo = QLabel("Código: --")
         self.label_codigo.setObjectName("terminalCode")
-        bottom_panel_layout.addWidget(self.label_descricao)
-        bottom_panel_layout.addWidget(self.label_codigo)
-        self.layout.addWidget(main_panel, 2)
+        
+        self.btn_remover = QPushButton("➖")
+        self.btn_remover.setObjectName("btnTerminalRemove")
+        self.btn_adicionar = QPushButton("➕")
+        self.btn_adicionar.setObjectName("btnTerminalAdd")
+
+        # --- 2. ORGANIZAÇÃO DO LAYOUT ---
+        header_layout = QHBoxLayout()
+        header_layout.addWidget(logo_label)
+        header_layout.addStretch(1)
+        header_layout.addWidget(titulo)
+        header_layout.addStretch(1)
+        header_layout.addWidget(self.btn_novo_produto)
+
+        main_panel_layout = QHBoxLayout(main_panel)
+        main_panel_layout.setSpacing(0)
+        main_panel_layout.addWidget(self.label_nome, 3)
+        qtd_layout = QVBoxLayout(self.label_qtd_box)
+        qtd_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        qtd_layout.addWidget(self.label_qtd_valor)
+        main_panel_layout.addWidget(self.label_qtd_box, 1)
+
+        bottom_panel_layout = QHBoxLayout(bottom_panel)
+        info_layout = QVBoxLayout()
+        info_layout.addWidget(self.label_descricao)
+        info_layout.addWidget(self.label_codigo)
+        bottom_panel_layout.addLayout(info_layout, 3)
+        action_buttons_layout = QHBoxLayout()
+        action_buttons_layout.addStretch(1)
+        action_buttons_layout.addWidget(self.btn_remover)
+        action_buttons_layout.addWidget(self.btn_adicionar)
+        bottom_panel_layout.addLayout(action_buttons_layout, 1)
+
+        self.layout.addLayout(header_layout)
+        self.layout.addWidget(main_panel, 1)
         self.layout.addWidget(bottom_panel, 1)
+        
+        # --- 3. CONEXÕES DOS SINAIS ---
+        self.barcode_timer.timeout.connect(self.processar_codigo)
         self.btn_adicionar.clicked.connect(lambda: self.abrir_dialogo_quantidade("Entrada"))
         self.btn_remover.clicked.connect(lambda: self.abrir_dialogo_quantidade("Saida"))
+        self.btn_novo_produto.clicked.connect(self.ir_para_novo_produto.emit)
+        
         self.resetar_tela()
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            self.barcode_timer.stop()
             self.processar_codigo()
         else:
             self.barcode_buffer += event.text()
             self.barcode_timer.start()
+
     def processar_codigo(self):
         codigo = self.barcode_buffer.strip()
         self.barcode_buffer = ""
         if not codigo:
             return
+
         self.label_nome.setText("A procurar...")
         QApplication.processEvents()
+
         global access_token
+        url = f"{API_BASE_URL}/api/estoque/saldos?search={codigo}"
         headers = {'Authorization': f'Bearer {access_token}'}
         try:
-            response = requests.get(f"{API_BASE_URL}/api/estoque/saldos?search={codigo}", headers=headers)
+            response = requests.get(url, headers=headers)
             if response and response.status_code == 200:
                 resultados = response.json()
                 if resultados:
@@ -1653,6 +1702,7 @@ class TerminalWidget(QWidget):
                 self.produto_nao_encontrado()
         except requests.exceptions.RequestException:
             self.produto_nao_encontrado("Erro de conexão.")
+
     def atualizar_display(self):
         self.label_nome.setText(self.produto_atual.get('nome', 'N/A'))
         self.label_qtd_valor.setText(str(self.produto_atual.get('saldo_atual', '--')))
@@ -1660,10 +1710,12 @@ class TerminalWidget(QWidget):
         self.label_codigo.setText(f"Código: {self.produto_atual.get('codigo', '--')}")
         self.btn_adicionar.setEnabled(True)
         self.btn_remover.setEnabled(True)
+
     def produto_nao_encontrado(self, msg="Produto não encontrado."):
         self.produto_atual = None
         self.label_nome.setText(msg)
         self.resetar_tela(manter_msg=True)
+
     def resetar_tela(self, manter_msg=False):
         if not manter_msg:
             self.label_nome.setText("Passe um código de barras no leitor...")
@@ -1672,16 +1724,23 @@ class TerminalWidget(QWidget):
         self.label_codigo.setText("Código: --")
         self.btn_adicionar.setEnabled(False)
         self.btn_remover.setEnabled(False)
+
     def abrir_dialogo_quantidade(self, operacao):
         if not self.produto_atual:
             return
-        dialog = QuantidadeDialog(self, self.produto_atual['id_produto'], self.produto_atual['nome'], self.produto_atual['codigo'], operacao)
+        
+        dialog = QuantidadeDialog(self,
+                                  self.produto_atual['id_produto'],
+                                  self.produto_atual['nome'],
+                                  self.produto_atual['codigo'],
+                                  operacao)
         dialog.estoque_modificado.connect(self.reprocessar_codigo_apos_modificacao)
         dialog.exec()
+
     def reprocessar_codigo_apos_modificacao(self, codigo):
-        print(f"Atualização recebida para o código: {codigo}. A reprocessar...")
         self.barcode_buffer = codigo
         self.processar_codigo()
+
 
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
@@ -1689,14 +1748,20 @@ class TerminalWidget(QWidget):
 
 class JanelaPrincipal(QMainWindow):
     logoff_requested = Signal()
+
     def __init__(self):
         super().__init__()
+        
         try:
             self.setWindowTitle("Sistema de Gestão de Estoque")
             self.resize(1280, 720)
+        
             self.dados_usuario = {}
+        
+            # --- ÁREA DE CONTEÚDO ---
             self.stacked_widget = QStackedWidget()
             self.stacked_widget.setObjectName("mainContentArea")
+            
             self.tela_dashboard = DashboardWidget()
             self.tela_gestao_estoque = GestaoEstoqueWidget()
             self.tela_entrada_rapida = EntradaRapidaWidget()
@@ -1707,6 +1772,7 @@ class JanelaPrincipal(QMainWindow):
             self.tela_usuarios = None
             self.tela_importacao = ImportacaoWidget()
             self.tela_terminal = TerminalWidget()
+    
             self.stacked_widget.addWidget(self.tela_dashboard)
             self.stacked_widget.addWidget(self.tela_gestao_estoque)
             self.stacked_widget.addWidget(self.tela_entrada_rapida)
@@ -1716,7 +1782,10 @@ class JanelaPrincipal(QMainWindow):
             self.stacked_widget.addWidget(self.tela_naturezas)
             self.stacked_widget.addWidget(self.tela_importacao)
             self.stacked_widget.addWidget(self.tela_terminal)
+        
+            # --- BARRA DE MENUS ---
             menu_bar = self.menuBar()
+            
             menu_arquivo = menu_bar.addMenu("&Arquivo")
             acao_dashboard = QAction("Dashboard", self)
             acao_dashboard.setShortcut("Ctrl+D")
@@ -1734,6 +1803,7 @@ class JanelaPrincipal(QMainWindow):
             acao_sair.setShortcut(QKeySequence.Quit)
             acao_sair.triggered.connect(self.close)
             menu_arquivo.addAction(acao_sair)
+    
             self.menu_cadastros = menu_bar.addMenu("&Cadastros")
             self.acao_produtos = QAction("Inventário...", self)
             self.acao_produtos.setShortcut("Ctrl+P")
@@ -1753,6 +1823,7 @@ class JanelaPrincipal(QMainWindow):
             self.menu_cadastros.addSeparator()
             self.acao_usuarios = QAction("Usuários...", self)
             self.acao_usuarios.triggered.connect(self.mostrar_tela_usuarios)
+    
             menu_operacoes = menu_bar.addMenu("&Operações")
             acao_entrada = QAction("Entrada Rápida de Estoque...", self)
             acao_entrada.setShortcut("Ctrl+E")
@@ -1769,71 +1840,99 @@ class JanelaPrincipal(QMainWindow):
             acao_historico = QAction("Ver Histórico de Movimentações...", self)
             acao_historico.triggered.connect(lambda: (self.mostrar_tela_gestao_estoque(), self.tela_gestao_estoque.mostrar_historico()))
             menu_operacoes.addAction(acao_historico)
+    
             menu_relatorios = menu_bar.addMenu("&Relatórios")
             acao_gerar_relatorio = QAction("Gerar Relatório...", self)
             acao_gerar_relatorio.triggered.connect(self.mostrar_tela_relatorios)
             menu_relatorios.addAction(acao_gerar_relatorio)
+    
             menu_ajuda = menu_bar.addMenu("&Ajuda")
             acao_sobre = QAction("Sobre...", self)
             acao_sobre.triggered.connect(self.mostrar_dialogo_sobre)
             menu_ajuda.addAction(acao_sobre)
+    
+            # --- LAYOUT GERAL ---
             widget_central = QWidget()
             self.setCentralWidget(widget_central)
             layout_principal = QHBoxLayout(widget_central)
+    
+            # --- PAINEL LATERAL ---
             painel_lateral = QWidget()
             painel_lateral.setObjectName("painelLateral")
             painel_lateral.setFixedWidth(220)
             self.layout_painel_lateral = QVBoxLayout(painel_lateral)
             self.layout_painel_lateral.setAlignment(Qt.AlignTop)
+    
             self.btn_dashboard = QPushButton("🏠 Dashboard")
             self.btn_inventario = QPushButton("📦 Inventário")
+            self.btn_terminal = QPushButton("🛰️ Terminal")
             self.btn_entrada_rapida = QPushButton("➡️ Entrada Rápida")
             self.btn_saida_rapida = QPushButton("⬅️ Saída Rápida")
             self.btn_relatorios = QPushButton("📄 Relatórios")
             self.btn_fornecedores = QPushButton("🚚 Fornecedores")
             self.btn_naturezas = QPushButton("🌿 Naturezas")
-            self.btn_terminal = QPushButton("🛰️ Terminal")
             self.btn_usuarios = QPushButton("👥 Usuários")
             self.btn_logoff = QPushButton("🚪 Fazer Logoff")
             self.btn_logoff.setObjectName("btnLogoff")
+    
             self.layout_painel_lateral.addWidget(self.btn_dashboard)
             self.layout_painel_lateral.addWidget(self.btn_inventario)
+            self.layout_painel_lateral.addWidget(self.btn_terminal)
             self.layout_painel_lateral.addWidget(self.btn_entrada_rapida)
             self.layout_painel_lateral.addWidget(self.btn_saida_rapida)
             self.layout_painel_lateral.addWidget(self.btn_relatorios)
             self.layout_painel_lateral.addWidget(self.btn_fornecedores)
             self.layout_painel_lateral.addWidget(self.btn_naturezas)
-            self.layout_painel_lateral.addWidget(self.btn_terminal)
             self.layout_painel_lateral.addStretch(1)
             self.layout_painel_lateral.addWidget(self.btn_logoff)
+            
             layout_principal.addWidget(painel_lateral)
             layout_principal.addWidget(self.stacked_widget)
+    
+            # --- CONEXÕES ---
             self.btn_dashboard.clicked.connect(self.mostrar_tela_dashboard)
             self.btn_inventario.clicked.connect(self.mostrar_tela_gestao_estoque)
+            self.btn_terminal.clicked.connect(self.mostrar_tela_terminal)
             self.btn_entrada_rapida.clicked.connect(self.mostrar_tela_entrada_rapida)
             self.btn_saida_rapida.clicked.connect(self.mostrar_tela_saida_rapida)
             self.btn_relatorios.clicked.connect(self.mostrar_tela_relatorios)
             self.btn_fornecedores.clicked.connect(self.mostrar_tela_fornecedores)
             self.btn_naturezas.clicked.connect(self.mostrar_tela_naturezas)
-            self.btn_terminal.clicked.connect(self.mostrar_tela_terminal)
             self.btn_logoff.clicked.connect(self.logoff_requested.emit)
+            
             self.tela_dashboard.ir_para_produtos.connect(self.mostrar_tela_gestao_estoque)
             self.tela_dashboard.ir_para_fornecedores.connect(self.mostrar_tela_fornecedores)
+            self.tela_dashboard.ir_para_terminal.connect(self.mostrar_tela_terminal)
             self.tela_dashboard.ir_para_entrada_rapida.connect(self.mostrar_tela_entrada_rapida)
             self.tela_dashboard.ir_para_saida_rapida.connect(self.mostrar_tela_saida_rapida)
-            self.tela_dashboard.ir_para_terminal.connect(self.mostrar_tela_terminal) 
+            self.tela_terminal.ir_para_novo_produto.connect(self.abrir_formulario_novo_produto)
+            # --- A LINHA ABAIXO FOI REMOVIDA PARA CORRIGIR O ERRO ---
+            # self.tela_gestao_estoque.inventario_view.novo_produto_adicionado.connect(self.tela_terminal.reprocessar_codigo_apos_modificacao)
             self.tela_entrada_rapida.estoque_atualizado.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             self.tela_saida_rapida.estoque_atualizado.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             self.tela_importacao.produtos_importados_sucesso.connect(self.tela_gestao_estoque.inventario_view.carregar_dados_inventario)
             signal_handler.fornecedores_atualizados.connect(self.tela_fornecedores.carregar_fornecedores)
             signal_handler.naturezas_atualizadas.connect(self.tela_naturezas.carregar_naturezas)
+    
             self.statusBar().showMessage("Pronto.")
-        except Exception as e:
-            error_log_path = os.path.join(os.path.expanduser("~"), "Desktop", "crash_log.txt")
-            with open(error_log_path, "w", encoding="utf-8") as f:
-                f.write(f"Ocorreu um erro crítico ao iniciar a janela principal:\n\n{e}\n\n{traceback.format_exc()}")
-            QMessageBox.critical(self, "Erro de Inicialização", f"Ocorreu um erro crítico. Verifique o ficheiro 'crash_log.txt' no seu Ambiente de Trabalho.")
+    
+        except Exception:
+            desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+            log_file = os.path.join(desktop, "crash_log.txt")
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.write("Ocorreu um erro crítico ao iniciar a JanelaPrincipal:\n\n")
+                f.write(traceback.format_exc())
+            QMessageBox.critical(None, "Erro Crítico", f"A aplicação encontrou um erro fatal ao iniciar. Verifique o ficheiro 'crash_log.txt' no seu Ambiente de Trabalho.")
             sys.exit(1)
+
+
+    # --- MÉTODO CORRIGIDO E ADICIONADO ---
+    def abrir_formulario_novo_produto(self):
+        """Muda para a tela de inventário e abre o formulário de novo produto."""
+        self.mostrar_tela_gestao_estoque()
+        # Chama o método que abre o formulário na tela de inventário
+        self.tela_gestao_estoque.inventario_view.abrir_formulario_adicionar()
+      
     def carregar_dados_usuario(self, dados_usuario):
         self.dados_usuario = dados_usuario
         nome_usuario = self.dados_usuario.get('nome', 'N/A')
@@ -1994,7 +2093,12 @@ class DashboardWidget(QWidget):
             "A preguiça pode levar um mês para digerir uma folha.",
             "O Oceano Pacífico é o maior e mais profundo do mundo.",
             "A Torre Eiffel pode ser 15 cm mais alta no verão.",
-            "Os camelos têm três pálpebras para se proteger da areia."
+            "Os camelos têm três pálpebras para se proteger da areia.",
+            "As girafas têm a língua azul para evitar queimaduras solares.",
+            "O corpo humano tem mais de 600 músculos.",
+            "Dedo no cu e gritaria. ~Rogério Skylab, Matador de passarinho."
+            
+            
         ]
         welcome_card = QFrame()
         welcome_card.setObjectName("welcomeCard")
