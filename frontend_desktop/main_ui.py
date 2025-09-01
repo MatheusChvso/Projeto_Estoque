@@ -23,7 +23,7 @@ from PySide6.QtGui import (
     QPixmap, QAction, QDoubleValidator, QKeySequence, QIcon
 )
 from PySide6.QtCore import (
-    Qt, QTimer, Signal, QDate, QEvent, QObject, QThread, QUrl
+    Qt, QTimer, Signal, QDate, QEvent, QObject, QThread, QUrl, QSettings # Adicione QSettings
 )
 from PySide6.QtMultimedia import QSoundEffect
 from packaging.version import parse as parse_version
@@ -62,6 +62,20 @@ def show_connection_error_message(parent):
         "2. O seu computador tem uma ligação à rede (internet ou local).\n"
         "3. O endereço IP no ficheiro 'config.py' está correto."
     )
+    
+CURRENT_THEME = 'light' # Variável global para saber o tema atual
+
+def load_stylesheet(theme_name):
+    """Carrega e retorna o conteúdo do ficheiro QSS para um tema específico."""
+    global CURRENT_THEME
+    filename = "style.qss" if theme_name == "light" else "style_dark.qss"
+    try:
+        with open(resource_path(filename), "r", encoding="utf-8") as f:
+            CURRENT_THEME = theme_name
+            return f.read()
+    except FileNotFoundError:
+        print(f"AVISO: Arquivo de estilo ({filename}) não encontrado.")
+        return ""    
 
 def check_for_updates():
     """Contacta a API para verificar se existe uma nova versão da aplicação."""
@@ -1792,6 +1806,11 @@ class JanelaPrincipal(QMainWindow):
             acao_dashboard.triggered.connect(self.mostrar_tela_dashboard)
             menu_arquivo.addAction(acao_dashboard)
             menu_arquivo.addSeparator()
+            # --- NOVO CÓDIGO AQUI ---
+            self.acao_trocar_tema = QAction("Mudar para Tema Escuro", self)
+            self.acao_trocar_tema.triggered.connect(self.trocar_tema)
+            menu_arquivo.addAction(self.acao_trocar_tema)
+            # --- FIM DO NOVO CÓDIGO ---
             self.acao_mudar_senha = QAction("Alterar Minha Senha...", self)
             self.acao_mudar_senha.triggered.connect(self.abrir_dialogo_mudar_senha)
             menu_arquivo.addAction(self.acao_mudar_senha)
@@ -1985,6 +2004,24 @@ class JanelaPrincipal(QMainWindow):
     def mostrar_tela_terminal(self):
         self.stacked_widget.setCurrentWidget(self.tela_terminal)
         self.tela_terminal.setFocus()
+    def trocar_tema(self):
+        """Alterna entre o tema claro e escuro."""
+        settings = QSettings("SuaEmpresa", "GestaoEstoque")
+        
+        # Determina o novo tema
+        novo_tema = "dark" if CURRENT_THEME == "light" else "light"
+        
+        # Carrega e aplica o novo estilo
+        novo_estilo = load_stylesheet(novo_tema)
+        QApplication.instance().setStyleSheet(novo_estilo)
+        
+        # Atualiza o texto da ação do menu
+        texto_acao = "Mudar para Tema Claro" if novo_tema == "dark" else "Mudar para Tema Escuro"
+        self.acao_trocar_tema.setText(texto_acao)
+        
+        # Salva a nova preferência
+        settings.setValue("theme", novo_tema)
+        print(f"Tema alterado para: {novo_tema}")
 
 class SobreDialog(QDialog):
     def __init__(self, parent=None):
@@ -2325,11 +2362,25 @@ class JanelaLogin(QMainWindow):
 # ==============================================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    try:
-        with open(resource_path("style.qss"), "r", encoding="utf-8") as f:
-            app.setStyleSheet(f.read())
-    except FileNotFoundError:
-        print("AVISO: Arquivo de estilo (style.qss) não encontrado.")
+    
+    # --- LÓGICA DE TEMA AQUI ---
+    # Define um nome para a sua empresa e aplicação para o QSettings
+    settings = QSettings("SuaEmpresa", "GestaoEstoque") 
+    
+    # Lê o tema salvo, usando 'light' como padrão se nada for encontrado
+    saved_theme = settings.value("theme", "light") 
+    
+    # Carrega o estilo inicial baseado na preferência salva
+    initial_stylesheet = load_stylesheet(saved_theme)
+    app.setStyleSheet(initial_stylesheet)
+    # --- FIM DA LÓGICA DE TEMA ---
+
     manager = AppManager()
     manager.start()
+
+    # Atualiza o texto do botão de tema na janela principal após ela ser criada
+    if manager.main_window:
+        texto_acao = "Mudar para Tema Claro" if saved_theme == "dark" else "Mudar para Tema Escuro"
+        manager.main_window.acao_trocar_tema.setText(texto_acao)
+
     sys.exit(app.exec())
