@@ -3,4 +3,4 @@
 # Para testar no mesmo computador, use "127.0.0.1".
 # Para testar em outra máquina na rede, use o IP da máquina servidora (ex: "192.168.0.10").
 
-SERVER_IP = '192.168.17.200'
+SERVER_IP = '127.0.0.1'

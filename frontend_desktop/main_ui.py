@@ -118,6 +118,53 @@ def check_for_updates():
 # 3. JANELAS DE DIÁLOGO E WORKERS
 # ==============================================================================
 
+class ApiWorker(QObject):
+    """
+    Um 'trabalhador' genérico que executa uma requisição de API em uma QThread separada
+    para não congelar a interface.
+    """
+    # Sinal que será emitido com o resultado: (status_code, dados_json)
+    finished = Signal(int, dict)
+
+    def __init__(self, method, endpoint, params=None, json_data=None, files=None):
+        super().__init__()
+        self.method = method
+        self.endpoint = endpoint
+        self.params = params
+        self.json_data = json_data
+        self.files = files
+
+    def run(self):
+        """O método que é executado na thread secundária."""
+        global access_token, API_BASE_URL
+        headers = {'Authorization': f'Bearer {access_token}'}
+        url = f"{API_BASE_URL}{self.endpoint}"
+        
+        try:
+            # Faz a requisição à API
+            response = requests.request(
+                self.method, 
+                url, 
+                headers=headers, 
+                params=self.params, 
+                json=self.json_data, 
+                files=self.files, 
+                timeout=15
+            )
+            
+            # Tenta descodificar a resposta como JSON
+            data = response.json() if response.content else {}
+            # Emite o sinal de 'finished' com o resultado
+            self.finished.emit(response.status_code, data)
+            
+        except requests.exceptions.RequestException as e:
+            # Em caso de erro de conexão, emite um código de status -1
+            self.finished.emit(-1, {"erro": f"Erro de conexão: {e}"})
+        except Exception as e:
+            # Em caso de outros erros, emite -2
+            self.finished.emit(-2, {"erro": f"Erro inesperado: {e}"})
+
+
 class FormDataLoader(QObject):
     finished = Signal(dict)
     def __init__(self, produto_id):
@@ -1755,7 +1802,69 @@ class TerminalWidget(QWidget):
         self.barcode_buffer = codigo
         self.processar_codigo()
 
+class DocumentacaoWidget(QWidget):
+    def __init__(self, servico_id): # Recebe o ID do serviço ao ser criado
+        super().__init__()
+        self.servico_id = servico_id
+        
+        # --- Configuração do Layout ---
+        self.layout = QHBoxLayout(self)
+        
+        # (Aqui ficará o formulário à esquerda no futuro)
+        self.form_placeholder = QLabel("Área do Formulário") 
+        
+        # Lista para o histórico à direita
+        self.lista_historico = QListWidget()
+        
+        self.layout.addWidget(self.form_placeholder, 2) # Ocupa 2/3 do espaço
+        self.layout.addWidget(self.lista_historico, 1) # Ocupa 1/3 do espaço
 
+        # Inicia o carregamento dos dados
+        self.carregar_historico()
+
+    def carregar_historico(self):
+        """Inicia a chamada à API em uma thread para buscar o histórico."""
+        self.lista_historico.clear()
+        self.lista_historico.addItem("A carregar histórico do servidor...")
+        
+        # Usa o mesmo padrão de Worker/Thread que já definimos
+        self.thread = QThread()
+        # O endpoint agora é dinâmico com o self.servico_id
+        self.worker = ApiWorker("get", f"/api/servicos/{self.servico_id}/documentos")
+        self.worker.moveToThread(self.thread)
+        
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.on_carregamento_historico_finished)
+        
+        # Limpeza
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        
+        self.thread.start()
+
+    def on_carregamento_historico_finished(self, status_code, data):
+        """Callback executado quando a thread da API termina."""
+        self.lista_historico.clear() # Limpa a mensagem "A carregar..."
+        
+        if status_code == 200:
+            if not data:
+                self.lista_historico.addItem("Nenhum documento gerado para este serviço.")
+                return
+
+            for doc in data:
+                # Cria o texto para cada item da lista
+                texto_item = f"{doc['data_criacao']} - por {doc['nome_usuario']} - v{doc['versao']}"
+                item = QListWidgetItem(texto_item)
+                
+                # Dica de profissional: guarde o ID do documento no item para uso futuro!
+                item.setData(Qt.UserRole, doc['id'])
+                
+                self.lista_historico.addItem(item)
+        else:
+            self.lista_historico.addItem("Erro ao carregar histórico.")
+            erro = data.get("erro", "Erro desconhecido")
+            QMessageBox.warning(self, "Erro de API", f"Não foi possível buscar o histórico: {erro}")
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
@@ -1786,6 +1895,7 @@ class JanelaPrincipal(QMainWindow):
             self.tela_usuarios = None
             self.tela_importacao = ImportacaoWidget()
             self.tela_terminal = TerminalWidget()
+            self.tela_documentacao_servico_1 = None
     
             self.stacked_widget.addWidget(self.tela_dashboard)
             self.stacked_widget.addWidget(self.tela_gestao_estoque)
@@ -1848,6 +1958,10 @@ class JanelaPrincipal(QMainWindow):
             acao_entrada.setShortcut("Ctrl+E")
             acao_entrada.triggered.connect(self.mostrar_tela_entrada_rapida)
             menu_operacoes.addAction(acao_entrada)
+            menu_operacoes.addSeparator() # Adiciona uma linha a separar
+            acao_doc_teste = QAction("TESTE: Documentação Serviço 1", self)
+            acao_doc_teste.triggered.connect(self.mostrar_tela_documentacao_teste)
+            menu_operacoes.addAction(acao_doc_teste)
             acao_saida = QAction("Saída Rápida de Estoque...", self)
             acao_saida.setShortcut("Ctrl+S")
             acao_saida.triggered.connect(self.mostrar_tela_saida_rapida)
@@ -2022,7 +2136,18 @@ class JanelaPrincipal(QMainWindow):
         # Salva a nova preferência
         settings.setValue("theme", novo_tema)
         print(f"Tema alterado para: {novo_tema}")
-
+    def mostrar_tela_documentacao_teste(self):
+        """Cria (se necessário) e exibe a tela de documentação para o serviço de teste."""
+        servico_id_teste = 1
+        
+        # Lógica para criar a tela apenas uma vez e reutilizá-la
+        if self.tela_documentacao_servico_1 is None:
+            print(f"A criar widget de documentação para o serviço ID: {servico_id_teste}")
+            self.tela_documentacao_servico_1 = DocumentacaoWidget(servico_id=servico_id_teste)
+            self.stacked_widget.addWidget(self.tela_documentacao_servico_1)
+        
+        # Define a nova tela como a tela ativa
+        self.stacked_widget.setCurrentWidget(self.tela_documentacao_servico_1)
 class SobreDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
