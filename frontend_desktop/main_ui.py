@@ -36,7 +36,11 @@ from config import SERVER_IP
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
 APP_VERSION = "2.3"
-
+# --- ADICIONE ESTAS LINHAS DE DEPURACAO AQUI ---
+print("--- INICIANDO APLICAÇÃO ---")
+print(f"--- IP DO SERVIDOR CARREGADO DE CONFIG.PY: '{SERVER_IP}' ---")
+print("--------------------------")
+# --- FIM DAS LINHAS DE DEPURACAO ---
 class SignalHandler(QObject):
     """Um gestor central para sinais globais da aplicação."""
     fornecedores_atualizados = Signal()
@@ -124,7 +128,7 @@ class ApiWorker(QObject):
     para não congelar a interface.
     """
     # Sinal que será emitido com o resultado: (status_code, dados_json)
-    finished = Signal(int, dict)
+    finished = Signal(int, object)
 
     def __init__(self, method, endpoint, params=None, json_data=None, files=None):
         super().__init__()
@@ -135,35 +139,35 @@ class ApiWorker(QObject):
         self.files = files
 
     def run(self):
-        """O método que é executado na thread secundária."""
+        # --- PRINT DE DEPURACAO 1 ---
+        print(f"--- FRONTEND DEBUG: ApiWorker.run iniciado para o endpoint: {self.endpoint} ---")
+
         global access_token, API_BASE_URL
         headers = {'Authorization': f'Bearer {access_token}'}
         url = f"{API_BASE_URL}{self.endpoint}"
-        
+
+        # --- PRINT DE DEPURACAO 2 ---
+        print(f"--- FRONTEND DEBUG: A fazer chamada {self.method.upper()} para a URL: {url} ---")
+
         try:
-            # Faz a requisição à API
             response = requests.request(
-                self.method, 
-                url, 
-                headers=headers, 
-                params=self.params, 
-                json=self.json_data, 
-                files=self.files, 
-                timeout=15
+                self.method, url, headers=headers, params=self.params, 
+                json=self.json_data, files=self.files, timeout=15
             )
-            
-            # Tenta descodificar a resposta como JSON
+            # --- PRINT DE DEPURACAO 3 ---
+            print(f"--- FRONTEND DEBUG: Resposta recebida com status: {response.status_code} ---")
+
             data = response.json() if response.content else {}
-            # Emite o sinal de 'finished' com o resultado
             self.finished.emit(response.status_code, data)
-            
+
         except requests.exceptions.RequestException as e:
-            # Em caso de erro de conexão, emite um código de status -1
+            # --- PRINT DE DEPURACAO 4 ---
+            print(f"--- FRONTEND DEBUG: EXCEÇÃO! Erro de conexão: {e} ---")
             self.finished.emit(-1, {"erro": f"Erro de conexão: {e}"})
         except Exception as e:
-            # Em caso de outros erros, emite -2
+            # --- PRINT DE DEPURACAO 5 ---
+            print(f"--- FRONTEND DEBUG: EXCEÇÃO! Erro inesperado: {e} ---")
             self.finished.emit(-2, {"erro": f"Erro inesperado: {e}"})
-
 
 class FormDataLoader(QObject):
     finished = Signal(dict)
@@ -1811,12 +1815,26 @@ class DocumentacaoWidget(QWidget):
         self.layout = QHBoxLayout(self)
         
         # (Aqui ficará o formulário à esquerda no futuro)
-        self.form_placeholder = QLabel("Área do Formulário") 
+        self.form_widget = QWidget()
+        form_layout = QFormLayout(self.form_widget)
+        form_layout.setContentsMargins(10, 10, 10, 10)
+        form_layout.setSpacing(15)
+        
+        # Cria os campos de input (adicione mais conforme necessário)
+        self.input_cliente = QLineEdit()
+        self.input_data_servico = QLineEdit()
+        self.input_tecnico = QLineEdit()
+        
+        # Adiciona os campos ao layout do formulário
+        form_layout.addRow("Nome do Cliente:", self.input_cliente)
+        form_layout.addRow("Data de Execução:", self.input_data_servico)
+        form_layout.addRow("Técnico Responsável:", self.input_tecnico) 
         
         # Lista para o histórico à direita
         self.lista_historico = QListWidget()
+        self.lista_historico.itemClicked.connect(self.on_historico_item_clicado)
         
-        self.layout.addWidget(self.form_placeholder, 2) # Ocupa 2/3 do espaço
+        self.layout.addWidget(self.form_widget, 2) # Ocupa 2/3 do espaço
         self.layout.addWidget(self.lista_historico, 1) # Ocupa 1/3 do espaço
 
         # Inicia o carregamento dos dados
@@ -1824,12 +1842,13 @@ class DocumentacaoWidget(QWidget):
 
     def carregar_historico(self):
         """Inicia a chamada à API em uma thread para buscar o histórico."""
+        # --- PRINT DE DEPURACAO 6 ---
+        print("--- FRONTEND DEBUG: Dentro de carregar_historico. A iniciar a thread da API. ---")
+    
         self.lista_historico.clear()
         self.lista_historico.addItem("A carregar histórico do servidor...")
-        
-        # Usa o mesmo padrão de Worker/Thread que já definimos
+    
         self.thread = QThread()
-        # O endpoint agora é dinâmico com o self.servico_id
         self.worker = ApiWorker("get", f"/api/servicos/{self.servico_id}/documentos")
         self.worker.moveToThread(self.thread)
         
@@ -1845,10 +1864,16 @@ class DocumentacaoWidget(QWidget):
 
     def on_carregamento_historico_finished(self, status_code, data):
         """Callback executado quando a thread da API termina."""
-        self.lista_historico.clear() # Limpa a mensagem "A carregar..."
+        
+        # --- PRINT DE DEPURACAO FINAL ---
+        print(f"--- FRONTEND DEBUG (CALLBACK): A função foi chamada com status {status_code}.")
+        print(f"--- FRONTEND DEBUG (CALLBACK): Dados recebidos: {data} ---")
+        
+        self.lista_historico.clear()
         
         if status_code == 200:
             if not data:
+                print("--- FRONTEND DEBUG (CALLBACK): A condição 'if not data' foi VERDADEIRA. A exibir msg de lista vazia. ---")
                 self.lista_historico.addItem("Nenhum documento gerado para este serviço.")
                 return
 
@@ -1865,6 +1890,47 @@ class DocumentacaoWidget(QWidget):
             self.lista_historico.addItem("Erro ao carregar histórico.")
             erro = data.get("erro", "Erro desconhecido")
             QMessageBox.warning(self, "Erro de API", f"Não foi possível buscar o histórico: {erro}")
+            
+    def on_historico_item_clicado(self, item):
+        # """Este método é chamado sempre que um item na lista de histórico é clicado."""
+        documento_id = item.data(Qt.UserRole)
+        if documento_id is None:
+            return
+            
+        print(f"Item clicado! ID do documento: {documento_id}. A buscar detalhes na API...")
+        
+        # Inicia a chamada à API em uma thread para buscar os detalhes
+        self.thread_detalhes = QThread()
+        self.worker_detalhes = ApiWorker("get", f"/api/documentos/{documento_id}")
+        self.worker_detalhes.moveToThread(self.thread_detalhes)
+        
+        self.thread_detalhes.started.connect(self.worker_detalhes.run)
+        # Conecta o sinal de 'finished' a um NOVO método para preencher o formulário
+        self.worker_detalhes.finished.connect(self.on_detalhes_documento_recebidos)
+        
+        # Limpeza da thread
+        self.worker_detalhes.finished.connect(self.thread_detalhes.quit)
+        self.worker_detalhes.finished.connect(self.worker_detalhes.deleteLater)
+        self.thread_detalhes.finished.connect(self.thread_detalhes.deleteLater)
+        
+        self.thread_detalhes.start() 
+        
+        
+    
+    def on_detalhes_documento_recebidos(self, status_code, data):
+        """Callback que preenche o formulário quando os dados chegam da API."""
+        print(f"Dados do formulário recebidos da API: {data}")
+        
+        if status_code == 200:
+            # Usamos .get(chave, '') para evitar erros se uma chave não existir no JSON
+            self.input_cliente.setText(data.get('cliente', ''))
+            self.input_data_servico.setText(data.get('data_servico', ''))
+            self.input_tecnico.setText(data.get('tecnico', ''))
+            # Adicione .setText() para todos os outros campos que você criar
+            
+            QMessageBox.information(self, "Sucesso", "Dados do documento carregados no formulário!")
+        else:
+            QMessageBox.critical(self, "Erro de API", "Não foi possível carregar os detalhes deste documento.")
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================

@@ -897,7 +897,6 @@ def get_versao_app():
  #==================================================================================================================
  # Seção de Documentos
  
- 
 @app.route('/api/servicos/<int:servico_id>/documentos', methods=['GET'])
 @jwt_required()
 def get_historico_documentos(servico_id):
@@ -905,9 +904,9 @@ def get_historico_documentos(servico_id):
     Busca o histórico de documentos para um serviço específico, de forma otimizada.
     """
     try:
-        # Query otimizada que busca os documentos e já carrega os dados do usuário associado
-        # para evitar múltiplas queries (problema N+1).
-        # Ordenamos pela versão descendente para mostrar os mais recentes primeiro.
+        # --- PRINT DE DEPURACAO 1: Estamos a procurar o ID certo? ---
+        print(f"--- API DEBUG: Buscando documentos para o servico_id: {servico_id} ---")
+
         documentos = DocumentosGerados.query.options(
             joinedload(DocumentosGerados.usuario)
         ).filter_by(
@@ -915,28 +914,48 @@ def get_historico_documentos(servico_id):
         ).order_by(
             DocumentosGerados.versao.desc()
         ).all()
+        
+        # --- PRINT DE DEPURACAO 2: O que o SQLAlchemy encontrou no banco? ---
+        print(f"--- API DEBUG: SQLAlchemy encontrou: {documentos} ---")
 
-        # Monta a resposta JSON que o front-end irá usar
         historico_list = []
         for doc in documentos:
             historico_list.append({
                 'id': doc.id,
-                'data_criacao': doc.data_criacao.strftime('%d/%m/%Y'), # Formata a data
+                'data_criacao': doc.data_criacao.strftime('%d/%m/%Y'),
                 'versao': doc.versao,
                 'caminho_pdf': doc.caminho_pdf_final,
-                # Acessamos o nome do usuário de forma segura, tratando o caso de não existir
                 'nome_usuario': doc.usuario.nome if doc.usuario else 'Usuário Desconhecido'
             })
+        
+        # --- PRINT DE DEPURACAO 3: Qual JSON estamos a enviar de volta? ---
+        print(f"--- API DEBUG: JSON a ser enviado: {historico_list} ---")
 
         return jsonify(historico_list), 200
 
     except Exception as e:
-        # Retorna um erro genérico em caso de falha
+        print(f"!!! API ERRO CRITICO: {e} !!!") # Adicionado para ver erros
         return jsonify({'erro': str(e)}), 500
     
     
-    
- 
+@app.route('/api/documentos/<int:documento_id>', methods=['GET'])
+@jwt_required()
+def get_dados_documento(documento_id):
+    """
+    Busca os dados de formulário de um documento específico pelo seu ID.
+    """
+    try:
+        # .get_or_404() é um atalho útil do Flask-SQLAlchemy.
+        # Ele tenta encontrar o registo pelo ID. Se não encontrar,
+        # ele automaticamente retorna um erro 404 Not Found.
+        documento = DocumentosGerados.query.get_or_404(documento_id)
+        
+        # O campo 'dados_formulario' já está em formato JSON no banco de dados.
+        # O jsonify() irá formatá-lo corretamente para a resposta da API.
+        return jsonify(documento.dados_formulario), 200
+
+    except Exception as e:
+        return jsonify({'erro': str(e)}), 500
  
  #==================================================================================================================   
     
