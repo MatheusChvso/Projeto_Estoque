@@ -30,6 +30,7 @@ from reportlab.lib import colors
 from reportlab.graphics.barcode import code128
 import os
 import json
+from flask_migrate import Migrate 
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -43,12 +44,12 @@ app.config["JWT_SECRET_KEY"] = "minha-chave-super-secreta-para-o-projeto-de-esto
 jwt = JWTManager(app)
 
 # --- CONFIGURAÇÃO DO BANCO DE DADOS ---
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:senha123@localhost/estoque_db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:senha123@192.168.17.200/estoque_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Cria a instância do SQLAlchemy
 db = SQLAlchemy(app)
-
+migrate = Migrate(app, db)
 
 # ==============================================================================
 # TABELAS DE ASSOCIAÇÃO (Muitos-para-Muitos)
@@ -124,6 +125,46 @@ class Usuario(db.Model):
     def check_password(self, senha):
         return check_password_hash(self.senha_hash, senha)
 
+class Servico(db.Model):
+    __tablename__ = 'servico'
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(200), nullable=False, unique=True)
+    descricao = db.Column(db.Text, nullable=True)
+    
+    # Relação para aceder facilmente a todos os documentos de um serviço
+    documentos = db.relationship('DocumentosGerados', back_populates='servico', cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f'<Servico {self.nome}>'
+    
+class DocumentosGerados(db.Model):
+    __tablename__ = 'documentos_gerados'
+
+    # Coluna de identificação única
+    id = db.Column(db.Integer, primary_key=True)
+    
+    # Chave estrangeira para a tabela 'servico'
+    servico_id = db.Column(db.Integer, db.ForeignKey('servico.id'), nullable=False)
+    
+    # Chave estrangeira para a tabela 'usuario'
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id_usuario'), nullable=False)
+    
+    # Informações sobre a geração do documento
+    data_criacao = db.Column(db.DateTime, nullable=False, default=datetime.now)
+    versao = db.Column(db.Integer, nullable=False)
+    
+    # Onde guardamos os dados do formulário como um objeto JSON
+    dados_formulario = db.Column(db.JSON, nullable=False)
+    
+    # Onde guardamos a localização do ficheiro PDF no servidor
+    caminho_pdf_final = db.Column(db.String(255), nullable=False)
+    
+    # Relações para que possamos fazer, por exemplo, `documento.servico.nome`
+    servico = db.relationship('Servico', back_populates='documentos')
+    usuario = db.relationship('Usuario')
+
+    def __repr__(self):
+        return f'<Documento v{self.versao} para Serviço ID {self.servico_id}>'
 
 # ==============================================================================
 # FUNÇÕES AUXILIARES (HELPERS)
@@ -853,7 +894,51 @@ def get_versao_app():
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
 
+ #==================================================================================================================
+ # Seção de Documentos
+ 
+ 
+@app.route('/api/servicos/<int:servico_id>/documentos', methods=['GET'])
+@jwt_required()
+def get_historico_documentos(servico_id):
+    """
+    Busca o histórico de documentos para um serviço específico, de forma otimizada.
+    """
+    try:
+        # Query otimizada que busca os documentos e já carrega os dados do usuário associado
+        # para evitar múltiplas queries (problema N+1).
+        # Ordenamos pela versão descendente para mostrar os mais recentes primeiro.
+        documentos = DocumentosGerados.query.options(
+            joinedload(DocumentosGerados.usuario)
+        ).filter_by(
+            servico_id=servico_id
+        ).order_by(
+            DocumentosGerados.versao.desc()
+        ).all()
+
+        # Monta a resposta JSON que o front-end irá usar
+        historico_list = []
+        for doc in documentos:
+            historico_list.append({
+                'id': doc.id,
+                'data_criacao': doc.data_criacao.strftime('%d/%m/%Y'), # Formata a data
+                'versao': doc.versao,
+                'caminho_pdf': doc.caminho_pdf_final,
+                # Acessamos o nome do usuário de forma segura, tratando o caso de não existir
+                'nome_usuario': doc.usuario.nome if doc.usuario else 'Usuário Desconhecido'
+            })
+
+        return jsonify(historico_list), 200
+
+    except Exception as e:
+        # Retorna um erro genérico em caso de falha
+        return jsonify({'erro': str(e)}), 500
     
+    
+    
+ 
+ 
+ #==================================================================================================================   
     
     
 # Dentro do app.py, na secção de rotas de Usuários
