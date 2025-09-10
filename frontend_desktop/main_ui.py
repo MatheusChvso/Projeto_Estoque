@@ -1812,16 +1812,20 @@ class DocumentacaoWidget(QWidget):
     def __init__(self, servico_id):
         super().__init__()
         self.servico_id = servico_id
-
-        # --- 1. Layout Principal ---
-        # O layout geral que divide a tela em duas: abas à esquerda, histórico à direita.
+    
+        # --- 1. Layouts Principais ---
+        # O layout geral que divide a tela em duas partes (esquerda e direita).
         self.layout_principal = QHBoxLayout(self)
-
-        # --- 2. Criação do Widget de Abas (Tabs) ---
+        
+        # Criamos um layout vertical para a parte esquerda. Ele irá conter
+        # o sistema de abas e, por baixo dele, o botão "Próximo".
+        layout_esquerda = QVBoxLayout()
+    
+        # --- 2. Criação do Sistema de Abas ---
         self.tab_widget = QTabWidget()
-
-        # --- 3. Criação e Adição de Cada Aba ---
-        # Chamamos uma função auxiliar para criar cada aba. Isso mantém o __init__ limpo.
+    
+        # --- 3. Chamada aos Métodos para Criar o Conteúdo de Cada Aba ---
+        # Cada uma destas funções retorna um QWidget que é o conteúdo de uma aba.
         aba_identificacao = self._criar_aba_identificacao()
         aba_escopo = self._criar_aba_escopo()
         aba_lista_docs = self._criar_aba_lista_documentos()
@@ -1833,33 +1837,45 @@ class DocumentacaoWidget(QWidget):
         aba_treinamento = self._criar_aba_treinamento()
         aba_as_built = self._criar_aba_as_built()
         aba_anexos = self._criar_aba_anexos()
-
-        # Adicionamos as abas criadas ao nosso widget de abas
+    
+        # --- 4. Adição das Abas ao Widget Principal ---
+        # Adicionamos cada QWidget retornado como uma nova aba.
         self.tab_widget.addTab(aba_identificacao, "1. Identificação")
-        self.tab_widget.addTab(aba_escopo, "2. Escopo e Premissas")
-        self.tab_widget.addTab(aba_lista_docs, "3. Lista de Documentos")
+        self.tab_widget.addTab(aba_escopo, "2. Escopo")
+        self.tab_widget.addTab(aba_lista_docs, "3. Lista de Docs")
         self.tab_widget.addTab(aba_diagramas, "4. Diagramas")
-        self.tab_widget.addTab(aba_lista_instrumentos, "5. Dispositivos & Instrumentos")
-        # (a secção 6 foi pulada na sua lista, adicionei a 7 a seguir)
+        self.tab_widget.addTab(aba_lista_instrumentos, "5. Dispositivos & Instrumentos") # Título corrigido!
         self.tab_widget.addTab(aba_programacao, "7. Programação")
         self.tab_widget.addTab(aba_testes, "8. Testes")
         self.tab_widget.addTab(aba_operacao, "9. Operação")
         self.tab_widget.addTab(aba_treinamento, "10. Treinamento")
         self.tab_widget.addTab(aba_as_built, "11. As Built")
         self.tab_widget.addTab(aba_anexos, "12. Anexos")
-
-        # --- 4. Criação da Lista de Histórico (lado direito) ---
+        
+        # Adicionamos o sistema de abas completo ao layout da esquerda.
+        layout_esquerda.addWidget(self.tab_widget)
+    
+        # --- 5. Criação do Botão "Próximo" ---
+        # Criamos o botão e o conectamos ao método que captura os dados.
+        self.btn_proximo = QPushButton("Próximo -> Para Anexos")
+        self.btn_proximo.setObjectName("btnPositive") # Estilo verde
+        self.btn_proximo.clicked.connect(self.avancar_para_anexos)
+        
+        # Adicionamos o botão ao layout da esquerda, alinhado à direita.
+        layout_esquerda.addWidget(self.btn_proximo, 0, Qt.AlignmentFlag.AlignRight)
+    
+        # --- 6. Criação da Lista de Histórico (Lado Direito) ---
         self.lista_historico = QListWidget()
-        # Conectamos o sinal de clique a um método para carregar os dados no formulário
         self.lista_historico.itemClicked.connect(self.on_historico_item_clicado)
-
-        # --- 5. Montagem Final do Layout ---
-        # Adicionamos o sistema de abas e a lista de histórico ao layout principal
-        self.layout_principal.addWidget(self.tab_widget, 2)  # Ocupa 2/3 do espaço
+    
+        # --- 7. Montagem Final do Layout ---
+        # Adicionamos o layout da esquerda (com abas e botão) e a lista da direita
+        # ao nosso layout principal, definindo as proporções.
+        self.layout_principal.addLayout(layout_esquerda, 2)  # Ocupa 2/3 do espaço
         self.layout_principal.addWidget(self.lista_historico, 1) # Ocupa 1/3 do espaço
-
-        # --- 6. Carregamento Inicial dos Dados ---
-        # Assim que a tela é criada, ela já busca o histórico na API
+    
+        # --- 8. Carregamento Inicial dos Dados ---
+        # A primeira coisa que a tela faz é buscar o histórico na API.
         self.carregar_historico()
 
     # ==============================================================================
@@ -2295,7 +2311,137 @@ class DocumentacaoWidget(QWidget):
      else:
          # Se o status não for 200, exibe uma mensagem de erro
          QMessageBox.critical(self, "Erro de API", "Não foi possível carregar os detalhes deste documento.")
-
+         
+         
+    def avancar_para_anexos(self):
+        """
+        Este método é chamado ao clicar em 'Próximo'. Ele lê os dados de todas
+        as abas e monta um único objeto de dicionário.
+        """
+        print("--- A capturar dados do formulário... ---")
+        
+        try:
+            dados_finais = {}
+    
+            # --- Aba 1: Identificação do Projeto ---
+            dados_finais['identificacao_projeto'] = {
+                "nome_projeto": self.input_nome_projeto.text(),
+                "cliente": self.input_cliente.text(),
+                "local_instalacao": self.input_local_instalacao.text(),
+                "empresa_responsavel": self.input_empresa_responsavel.text(),
+                "data_versao": self.input_data_versao.text(),
+                "num_contrato": self.input_num_contrato.text()
+            }
+    
+            # --- Aba 2: Escopo e Premissas ---
+            dados_finais['escopo_premissas'] = {
+                "objetivos": self.text_objetivos.toPlainText(),
+                "limites_fornecimento": self.text_limites.toPlainText(),
+                "premissas": self.text_premissas.toPlainText(),
+                "interfaces": self.text_interfaces.toPlainText()
+            }
+    
+            # --- Aba 3: Lista de Documentos do Projeto ---
+            # O padrão para ler uma tabela: criar uma lista, iterar pelas linhas,
+            # criar um dicionário para cada linha, e adicionar à lista.
+            lista_docs_data = []
+            for linha in range(self.tabela_documentos_projeto.rowCount()):
+                doc_linha = {
+                    "titulo": self.tabela_documentos_projeto.item(linha, 0).text() if self.tabela_documentos_projeto.item(linha, 0) else "",
+                    "codigo": self.tabela_documentos_projeto.item(linha, 1).text() if self.tabela_documentos_projeto.item(linha, 1) else "",
+                    "revisao": self.tabela_documentos_projeto.item(linha, 2).text() if self.tabela_documentos_projeto.item(linha, 2) else "",
+                    "data": self.tabela_documentos_projeto.item(linha, 3).text() if self.tabela_documentos_projeto.item(linha, 3) else "",
+                    "autor": self.tabela_documentos_projeto.item(linha, 4).text() if self.tabela_documentos_projeto.item(linha, 4) else "",
+                    "status": self.tabela_documentos_projeto.item(linha, 5).text() if self.tabela_documentos_projeto.item(linha, 5) else ""
+                }
+                lista_docs_data.append(doc_linha)
+            dados_finais['lista_documentos_projeto'] = lista_docs_data
+    
+            # --- Aba 4: Diagramas e Desenhos ---
+            dados_finais['diagramas_desenhos'] = {"notas": self.text_diagramas_notas.toPlainText()}
+    
+            # --- Aba 5: Dispositivos & Instrumentos ---
+            lista_instrumentos_data = []
+            for linha in range(self.tabela_instrumentos.rowCount()):
+                inst_linha = {
+                    "tag": self.tabela_instrumentos.item(linha, 0).text() if self.tabela_instrumentos.item(linha, 0) else "",
+                    "descricao": self.tabela_instrumentos.item(linha, 1).text() if self.tabela_instrumentos.item(linha, 1) else "",
+                    "fabricante_modelo": self.tabela_instrumentos.item(linha, 2).text() if self.tabela_instrumentos.item(linha, 2) else "",
+                    "faixa": self.tabela_instrumentos.item(linha, 3).text() if self.tabela_instrumentos.item(linha, 3) else "",
+                    "sinal": self.tabela_instrumentos.item(linha, 4).text() if self.tabela_instrumentos.item(linha, 4) else "",
+                    "localizacao": self.tabela_instrumentos.item(linha, 5).text() if self.tabela_instrumentos.item(linha, 5) else ""
+                }
+                lista_instrumentos_data.append(inst_linha)
+            dados_finais['lista_instrumentos'] = lista_instrumentos_data
+            
+            # --- Aba 7: Programação e Lógica de Controle ---
+            lista_programas_data = []
+            for linha in range(self.tabela_programacao.rowCount()):
+                prog_linha = {
+                    "ficheiro": self.tabela_programacao.item(linha, 0).text() if self.tabela_programacao.item(linha, 0) else "",
+                    "descricao": self.tabela_programacao.item(linha, 1).text() if self.tabela_programacao.item(linha, 1) else ""
+                }
+                lista_programas_data.append(prog_linha)
+            dados_finais['programacao_logica'] = lista_programas_data
+    
+            # --- Aba 8: Testes e Comissionamento ---
+            dados_finais['testes_comissionamento'] = {
+                "procedimentos": self.text_procedimentos_testes.toPlainText(),
+                "relatorios": self.text_relatorios_testes.toPlainText(),
+                "nao_conformidades": self.text_nao_conformidades.toPlainText()
+            }
+    
+            # --- Aba 9: Operação e Manutenção ---
+            dados_operacao = {
+                "procedimentos_manutencao": self.text_procedimentos_manutencao.toPlainText(),
+                "sobressalentes": self.text_sobressalentes.toPlainText()
+            }
+            if self.radio_texto_manual.isChecked():
+                dados_operacao["manual_tipo"] = "texto"
+                dados_operacao["manual_conteudo"] = self.text_manual_operacao.toPlainText()
+            else:
+                dados_operacao["manual_tipo"] = "pdf"
+                dados_operacao["manual_conteudo"] = self.input_caminho_pdf_manual.text()
+            dados_finais['operacao_manutencao'] = dados_operacao
+    
+            # --- Aba 10: Treinamento ---
+            lista_participantes_data = []
+            for linha in range(self.tabela_participantes.rowCount()):
+                part_linha = {
+                    "nome": self.tabela_participantes.item(linha, 0).text() if self.tabela_participantes.item(linha, 0) else "",
+                    "certificado": self.tabela_participantes.item(linha, 1).text() if self.tabela_participantes.item(linha, 1) else ""
+                }
+                lista_participantes_data.append(part_linha)
+            dados_finais['treinamento'] = {
+                "programa": self.text_programa_treinamento.toPlainText(),
+                "participantes": lista_participantes_data
+            }
+    
+            # --- Aba 11: Documentos "As Built" ---
+            lista_as_built_data = []
+            for linha in range(self.tabela_as_built.rowCount()):
+                as_built_linha = {
+                    "documento": self.tabela_as_built.item(linha, 0).text() if self.tabela_as_built.item(linha, 0) else "",
+                    "notas": self.tabela_as_built.item(linha, 1).text() if self.tabela_as_built.item(linha, 1) else ""
+                }
+                lista_as_built_data.append(as_built_linha)
+            dados_finais['documentos_as_built'] = lista_as_built_data
+    
+            # --- Aba 12: Anexos ---
+            dados_finais['anexos'] = {"descricao": self.text_anexos.toPlainText()}
+    
+            # Para depuração: imprime o JSON completo no terminal
+            print("--- DADOS CAPTURADOS ---")
+            print(json.dumps(dados_finais, indent=4, ensure_ascii=False))
+            print("--------------------------")
+            
+            # TODO: Guardar estes 'dados_finais' e mudar para a tela de anexos
+            QMessageBox.information(self, "Dados Capturados", "Os dados do formulário foram lidos com sucesso! Verifique o terminal.")
+    
+        except Exception as e:
+            QMessageBox.critical(self, "Erro ao Capturar Dados", f"Ocorreu um erro ao ler os dados do formulário: {e}")
+            traceback.print_exc() # Imprime o erro detalhado no terminal
+    
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
 # ==============================================================================
