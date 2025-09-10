@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QListWidget, QListWidgetItem, QAbstractItemView,
     QComboBox, QFileDialog, QFrame, QDateEdit, QCalendarWidget, QMenu,
     QTextEdit, QTabWidget, QProgressBar, QSpinBox, QCheckBox, QGroupBox,
-    QGridLayout, QScrollArea, QLineEdit, QInputDialog   
+    QGridLayout, QScrollArea, QLineEdit, QInputDialog  , QRadioButton, QButtonGroup
 )
 from PySide6.QtGui import (
     QPixmap, QAction, QDoubleValidator, QKeySequence, QIcon
@@ -1839,7 +1839,7 @@ class DocumentacaoWidget(QWidget):
         self.tab_widget.addTab(aba_escopo, "2. Escopo e Premissas")
         self.tab_widget.addTab(aba_lista_docs, "3. Lista de Documentos")
         self.tab_widget.addTab(aba_diagramas, "4. Diagramas")
-        self.tab_widget.addTab(aba_lista_instrumentos, "5. Instrumentos")
+        self.tab_widget.addTab(aba_lista_instrumentos, "5. Dispositivos & Instrumentos")
         # (a secção 6 foi pulada na sua lista, adicionei a 7 a seguir)
         self.tab_widget.addTab(aba_programacao, "7. Programação")
         self.tab_widget.addTab(aba_testes, "8. Testes")
@@ -1978,16 +1978,23 @@ class DocumentacaoWidget(QWidget):
     def _criar_aba_programacao(self):
         """Cria o widget para a Aba 7: Programação e Lógica de Controle."""
         widget = QWidget()
-        layout = QFormLayout(widget)
-        layout.setSpacing(15)
+        layout = QVBoxLayout(widget)
     
-        self.text_descricao_funcional = QTextEdit()
-        self.text_fluxogramas = QTextEdit()
-        self.text_estrutura_db = QTextEdit()
+        self.tabela_programacao = QTableWidget()
+        self.tabela_programacao.setColumnCount(2)
+        self.tabela_programacao.setHorizontalHeaderLabels(["Ficheiro (Backup/Print do Programa)", "Descrição Funcional/Comentários"])
+        self.tabela_programacao.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tabela_programacao.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
     
-        layout.addRow("Descrição funcional (narrativa):", self.text_descricao_funcional)
-        layout.addRow("Fluxogramas e diagramas de estados:", self.text_fluxogramas)
-        layout.addRow("Estrutura de banco de dados (tags, alarmes):", self.text_estrutura_db)
+        layout_botoes = QHBoxLayout()
+        self.btn_add_programa = QPushButton("➕ Adicionar Programa")
+        self.btn_rem_programa = QPushButton("➖ Remover Selecionado")
+        layout_botoes.addStretch(1)
+        layout_botoes.addWidget(self.btn_add_programa)
+        layout_botoes.addWidget(self.btn_rem_programa)
+    
+        layout.addWidget(self.tabela_programacao)
+        layout.addLayout(layout_botoes)
         return widget
     
     def _criar_aba_testes(self):
@@ -2006,18 +2013,52 @@ class DocumentacaoWidget(QWidget):
         return widget
     
     def _criar_aba_operacao(self):
-        """Cria o widget para a Aba 9: Operação e Manutenção."""
+        """Cria o widget para a Aba 9: Operação e Manutenção, com escolha de tipo."""
         widget = QWidget()
-        layout = QFormLayout(widget)
-        layout.setSpacing(15)
-    
+        layout = QVBoxLayout(widget)
+        
+        # Grupo de Radio Buttons para a escolha
+        self.radio_texto_manual = QRadioButton("Escrever Manualmente")
+        self.radio_pdf_manual = QRadioButton("Anexar PDF do Manual de Operação")
+        
+        layout_escolha = QHBoxLayout()
+        layout_escolha.addWidget(self.radio_texto_manual)
+        layout_escolha.addWidget(self.radio_pdf_manual)
+        layout_escolha.addStretch(1)
+        
+        # Widget para a entrada de texto
         self.text_manual_operacao = QTextEdit()
+        
+        # Widgets para a seleção de ficheiro
+        self.widget_selecao_pdf = QWidget()
+        layout_pdf = QHBoxLayout(self.widget_selecao_pdf)
+        self.input_caminho_pdf_manual = QLineEdit()
+        self.input_caminho_pdf_manual.setReadOnly(True)
+        self.btn_procurar_pdf_manual = QPushButton("Procurar...")
+        layout_pdf.addWidget(self.input_caminho_pdf_manual)
+        layout_pdf.addWidget(self.btn_procurar_pdf_manual)
+        
+        # Lógica para mostrar/esconder
+        self.radio_texto_manual.toggled.connect(self.text_manual_operacao.setVisible)
+        self.radio_pdf_manual.toggled.connect(self.widget_selecao_pdf.setVisible)
+        
+        # Inicia com a opção de texto selecionada
+        self.radio_texto_manual.setChecked(True)
+        self.widget_selecao_pdf.hide()
+        
+        # Layout do formulário para os outros campos
+        form_layout = QFormLayout()
+        form_layout.setSpacing(15)
         self.text_procedimentos_manutencao = QTextEdit()
         self.text_sobressalentes = QTextEdit()
+        form_layout.addRow("Procedimentos de calibração/manutenção:", self.text_procedimentos_manutencao)
+        form_layout.addRow("Lista de sobressalentes recomendados:", self.text_sobressalentes)
     
-        layout.addRow("Manual de operação:", self.text_manual_operacao)
-        layout.addRow("Procedimentos de calibração/manutenção:", self.text_procedimentos_manutencao)
-        layout.addRow("Lista de sobressalentes recomendados:", self.text_sobressalentes)
+        layout.addLayout(layout_escolha)
+        layout.addWidget(self.text_manual_operacao)
+        layout.addWidget(self.widget_selecao_pdf)
+        layout.addLayout(form_layout)
+        
         return widget
     
     def _criar_aba_treinamento(self):
@@ -2050,12 +2091,23 @@ class DocumentacaoWidget(QWidget):
     def _criar_aba_as_built(self):
         """Cria o widget para a Aba 11: Documentos 'As Built'."""
         widget = QWidget()
-        layout = QFormLayout(widget)
-        
-        self.text_as_built = QTextEdit()
-        self.text_as_built.setPlaceholderText("Descreva aqui as atualizações finais dos documentos e desenhos, refletindo o que foi de fato implementado em campo ('As Built').")
-        
-        layout.addRow("Notas sobre Documentos 'As Built':", self.text_as_built)
+        layout = QVBoxLayout(widget)
+    
+        self.tabela_as_built = QTableWidget()
+        self.tabela_as_built.setColumnCount(2)
+        self.tabela_as_built.setHorizontalHeaderLabels(["Documento 'As Built' (PDF)", "Notas / Detalhes da Atualização"])
+        self.tabela_as_built.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self.tabela_as_built.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+    
+        layout_botoes = QHBoxLayout()
+        self.btn_add_as_built = QPushButton("➕ Adicionar Documento")
+        self.btn_rem_as_built = QPushButton("➖ Remover Selecionado")
+        layout_botoes.addStretch(1)
+        layout_botoes.addWidget(self.btn_add_as_built)
+        layout_botoes.addWidget(self.btn_rem_as_built)
+    
+        layout.addWidget(self.tabela_as_built)
+        layout.addLayout(layout_botoes)
         return widget
     
     def _criar_aba_anexos(self):
