@@ -31,6 +31,11 @@ from reportlab.graphics.barcode import code128
 import os
 import json
 from flask_migrate import Migrate 
+import subprocess
+import traceback
+from werkzeug.utils import secure_filename
+from docx import Document
+from pypdf import PdfWriter
 # ==============================================================================
 # CONFIGURAÇÃO INICIAL
 # ==============================================================================
@@ -956,6 +961,114 @@ def get_dados_documento(documento_id):
 
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
+ 
+ 
+ 
+@app.route('/api/servicos/<int:servico_id>/documentos', methods=['POST'])
+@jwt_required()
+def gerar_novo_documento(servico_id):
+    """
+    Endpoint final que recebe os dados do formulário e os anexos,
+    e gera o documento PDF completo.
+    """
+    # --- Passo 1: Receber e Validar os Dados ---
+    if 'dados_formulario' not in request.form:
+        return jsonify({'erro': 'Dados do formulário não encontrados.'}), 400
+    
+    dados_formulario_str = request.form.get('dados_formulario')
+    dados_formulario = json.loads(dados_formulario_str)
+    anexos = request.files.getlist('anexos')
+    id_usuario_logado = get_jwt_identity()
+
+    # Define os caminhos dos ficheiros e pastas
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    temp_docx_path = os.path.join(dir_path, 'temp_documento.docx')
+    temp_pdf_path = os.path.join(dir_path, 'temp_documento.pdf')
+    output_folder = os.path.join(dir_path, 'documentos_gerados')
+
+    try:
+        # --- Passo 2: Calcular a Nova Versão ---
+        versao_anterior = db.session.query(db.func.max(DocumentosGerados.versao)).filter_by(servico_id=servico_id).scalar()
+        nova_versao = (versao_anterior or 0) + 1
+
+        # --- Passo 3: Preencher o Template .docx ---
+        doc = Document(os.path.join(dir_path, 'template.docx'))
+        
+        # Lógica para substituir as tags no texto
+        dados_identificacao = dados_formulario.get('identificacao_projeto', {})
+        for p in doc.paragraphs:
+            for key, value in dados_identificacao.items():
+                if f'{{{{{key}}}}}' in p.text:
+                    # Usamos 'inline' para manter a formatação do template
+                    for run in p.runs:
+                        run.text = run.text.replace(f'{{{{{key}}}}}', str(value))
+        
+        # Exemplo de como preencher uma tabela no .docx (para a lista de instrumentos)
+        # Assumindo que a sua tabela no .docx tem 6 colunas
+        if 'lista_instrumentos' in dados_formulario and len(doc.tables) > 0:
+            tabela_instrumentos_docx = doc.tables[0] # Pega na primeira tabela do documento
+            lista_instrumentos_dados = dados_formulario['lista_instrumentos']
+            for instrumento in lista_instrumentos_dados:
+                celulas = tabela_instrumentos_docx.add_row().cells
+                celulas[0].text = instrumento.get('tag', '')
+                celulas[1].text = instrumento.get('descricao', '')
+                celulas[2].text = instrumento.get('fabricante_modelo', '')
+                celulas[3].text = instrumento.get('faixa', '')
+                celulas[4].text = instrumento.get('sinal', '')
+                celulas[5].text = instrumento.get('localizacao', '')
+
+        doc.save(temp_docx_path)
+
+        # --- Passo 4: Converter .docx para .pdf ---
+        # Este comando requer o LibreOffice instalado no servidor
+        print("A iniciar conversão para PDF...")
+        comando = [
+            "soffice", # Comando do LibreOffice
+            "--headless", # Executar sem interface gráfica
+            "--convert-to", "pdf",
+            "--outdir", dir_path, # Guardar o PDF na mesma pasta
+            temp_docx_path
+        ]
+        subprocess.run(comando, check=True)
+        print("Conversão para PDF concluída.")
+
+        # --- Passo 5: Unir o PDF Principal com os Anexos ---
+        merger = PdfWriter()
+        merger.append(temp_pdf_path) # Adiciona o PDF do template
+        for anexo in anexos:
+            merger.append(anexo.stream) # Adiciona os PDFs enviados pelo utilizador
+        
+        # --- Passo 6: Salvar o PDF Final ---
+        nome_pdf_final = f"servico_{servico_id}_v{nova_versao}.pdf"
+        caminho_pdf_final_completo = os.path.join(output_folder, nome_pdf_final)
+        with open(caminho_pdf_final_completo, "wb") as f_out:
+            merger.write(f_out)
+        print(f"PDF final salvo em: {caminho_pdf_final_completo}")
+
+        # --- Passo 7: Guardar o Registo no Banco de Dados ---
+        novo_documento = DocumentosGerados(
+            servico_id=servico_id,
+            usuario_id=id_usuario_logado,
+            versao=nova_versao,
+            dados_formulario=dados_formulario,
+            caminho_pdf_final=caminho_pdf_final_completo 
+        )
+        db.session.add(novo_documento)
+        db.session.commit()
+
+        return jsonify({'mensagem': 'Documento gerado com sucesso!', 'caminho_download': caminho_pdf_final_completo}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        traceback.print_exc() # Imprime o erro detalhado no terminal do Flask
+        return jsonify({'erro': str(e)}), 500
+    
+    finally:
+        # --- Limpeza: Apagar os ficheiros temporários ---
+        if os.path.exists(temp_docx_path):
+            os.remove(temp_docx_path)
+        if os.path.exists(temp_pdf_path):
+            os.remove(temp_pdf_path)
  
  #==================================================================================================================   
     

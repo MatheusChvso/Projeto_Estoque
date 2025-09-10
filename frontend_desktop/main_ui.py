@@ -1807,245 +1807,187 @@ class TerminalWidget(QWidget):
         self.barcode_buffer = codigo
         self.processar_codigo()
 
-
+# ==============================================================================
+# CLASSES DE DOCUMENTOS 
+#===============================================================================
 class DocumentacaoWidget(QWidget):
+    """
+    Widget principal que gere toda a funcionalidade de geração de documentação,
+    incluindo o formulário de abas e a tela de anexos.
+    """
     def __init__(self, servico_id):
         super().__init__()
         self.servico_id = servico_id
-    
+        self.dados_formulario_capturados = {} # Atributo para guardar o JSON entre as telas
+
         # --- 1. Layouts Principais ---
-        # O layout geral que divide a tela em duas partes (esquerda e direita).
         self.layout_principal = QHBoxLayout(self)
+        self.stacked_widget_interno = QStackedWidget() # Para alternar entre formulário e anexos
+
+        # --- 2. Criação da Tela de Formulário ---
+        self.widget_formulario = QWidget()
+        layout_formulario = QVBoxLayout(self.widget_formulario)
         
-        # Criamos um layout vertical para a parte esquerda. Ele irá conter
-        # o sistema de abas e, por baixo dele, o botão "Próximo".
-        layout_esquerda = QVBoxLayout()
-    
-        # --- 2. Criação do Sistema de Abas ---
         self.tab_widget = QTabWidget()
-    
-        # --- 3. Chamada aos Métodos para Criar o Conteúdo de Cada Aba ---
-        # Cada uma destas funções retorna um QWidget que é o conteúdo de uma aba.
-        aba_identificacao = self._criar_aba_identificacao()
-        aba_escopo = self._criar_aba_escopo()
-        aba_lista_docs = self._criar_aba_lista_documentos()
-        aba_diagramas = self._criar_aba_diagramas()
-        aba_lista_instrumentos = self._criar_aba_lista_instrumentos()
-        aba_programacao = self._criar_aba_programacao()
-        aba_testes = self._criar_aba_testes()
-        aba_operacao = self._criar_aba_operacao()
-        aba_treinamento = self._criar_aba_treinamento()
-        aba_as_built = self._criar_aba_as_built()
-        aba_anexos = self._criar_aba_anexos()
-    
-        # --- 4. Adição das Abas ao Widget Principal ---
-        # Adicionamos cada QWidget retornado como uma nova aba.
-        self.tab_widget.addTab(aba_identificacao, "1. Identificação")
-        self.tab_widget.addTab(aba_escopo, "2. Escopo")
-        self.tab_widget.addTab(aba_lista_docs, "3. Lista de Docs")
-        self.tab_widget.addTab(aba_diagramas, "4. Diagramas")
-        self.tab_widget.addTab(aba_lista_instrumentos, "5. Dispositivos & Instrumentos") # Título corrigido!
-        self.tab_widget.addTab(aba_programacao, "7. Programação")
-        self.tab_widget.addTab(aba_testes, "8. Testes")
-        self.tab_widget.addTab(aba_operacao, "9. Operação")
-        self.tab_widget.addTab(aba_treinamento, "10. Treinamento")
-        self.tab_widget.addTab(aba_as_built, "11. As Built")
-        self.tab_widget.addTab(aba_anexos, "12. Anexos")
         
-        # Adicionamos o sistema de abas completo ao layout da esquerda.
-        layout_esquerda.addWidget(self.tab_widget)
-    
-        # --- 5. Criação do Botão "Próximo" ---
-        # Criamos o botão e o conectamos ao método que captura os dados.
+        # Chamada aos métodos para criar o conteúdo de cada aba
+        self.tab_widget.addTab(self._criar_aba_identificacao(), "1. Identificação")
+        self.tab_widget.addTab(self._criar_aba_escopo(), "2. Escopo")
+        self.tab_widget.addTab(self._criar_aba_lista_documentos(), "3. Lista de Docs")
+        self.tab_widget.addTab(self._criar_aba_diagramas(), "4. Diagramas")
+        self.tab_widget.addTab(self._criar_aba_lista_instrumentos(), "5. Dispositivos & Instrumentos")
+        self.tab_widget.addTab(self._criar_aba_programacao(), "7. Programação")
+        self.tab_widget.addTab(self._criar_aba_testes(), "8. Testes")
+        self.tab_widget.addTab(self._criar_aba_operacao(), "9. Operação")
+        self.tab_widget.addTab(self._criar_aba_treinamento(), "10. Treinamento")
+        self.tab_widget.addTab(self._criar_aba_as_built(), "11. As Built")
+        self.tab_widget.addTab(self._criar_aba_anexos(), "12. Anexos")
+        
         self.btn_proximo = QPushButton("Próximo -> Para Anexos")
-        self.btn_proximo.setObjectName("btnPositive") # Estilo verde
+        self.btn_proximo.setObjectName("btnPositive")
         self.btn_proximo.clicked.connect(self.avancar_para_anexos)
         
-        # Adicionamos o botão ao layout da esquerda, alinhado à direita.
-        layout_esquerda.addWidget(self.btn_proximo, 0, Qt.AlignmentFlag.AlignRight)
-    
-        # --- 6. Criação da Lista de Histórico (Lado Direito) ---
+        layout_formulario.addWidget(self.tab_widget)
+        layout_formulario.addWidget(self.btn_proximo, 0, Qt.AlignmentFlag.AlignRight)
+
+        # --- 3. Criação da Tela de Anexos ---
+        self.widget_anexos = AnexosWidget()
+        self.widget_anexos.voltar_solicitado.connect(self.voltar_para_formulario)
+        self.widget_anexos.gerar_documento_solicitado.connect(self.iniciar_geracao_documento)
+
+        # --- 4. Adicionar as "Telas" ao StackedWidget ---
+        self.stacked_widget_interno.addWidget(self.widget_formulario)
+        self.stacked_widget_interno.addWidget(self.widget_anexos)
+
+        # --- 5. Criação da Lista de Histórico (Lado Direito) ---
         self.lista_historico = QListWidget()
         self.lista_historico.itemClicked.connect(self.on_historico_item_clicado)
-    
-        # --- 7. Montagem Final do Layout ---
-        # Adicionamos o layout da esquerda (com abas e botão) e a lista da direita
-        # ao nosso layout principal, definindo as proporções.
-        self.layout_principal.addLayout(layout_esquerda, 2)  # Ocupa 2/3 do espaço
-        self.layout_principal.addWidget(self.lista_historico, 1) # Ocupa 1/3 do espaço
-    
-        # --- 8. Carregamento Inicial dos Dados ---
-        # A primeira coisa que a tela faz é buscar o histórico na API.
+
+        # --- 6. Montagem Final do Layout ---
+        self.layout_principal.addWidget(self.stacked_widget_interno, 2)
+        self.layout_principal.addWidget(self.lista_historico, 1)
+
+        # --- 7. Carregamento Inicial dos Dados ---
         self.carregar_historico()
 
     # ==============================================================================
     # MÉTODOS AUXILIARES PARA CRIAR CADA ABA
     # ==============================================================================
-
     def _criar_aba_identificacao(self):
-        """Cria o widget e os campos para a Aba 1: Identificação do Projeto."""
-        # Cada aba é um QWidget independente com o seu próprio layout
         widget = QWidget()
         layout = QFormLayout(widget)
         layout.setSpacing(15)
-
-        # Criamos cada campo e o guardamos como um atributo de 'self'
-        # para que possamos acedê-lo depois para preencher ou ler os dados.
         self.input_nome_projeto = QLineEdit()
         self.input_cliente = QLineEdit()
         self.input_local_instalacao = QLineEdit()
         self.input_empresa_responsavel = QLineEdit()
         self.input_data_versao = QLineEdit()
         self.input_num_contrato = QLineEdit()
-
-        # Adicionamos os campos ao layout da aba
         layout.addRow("Nome do projeto:", self.input_nome_projeto)
         layout.addRow("Cliente:", self.input_cliente)
         layout.addRow("Local de instalação:", self.input_local_instalacao)
         layout.addRow("Empresa responsável:", self.input_empresa_responsavel)
         layout.addRow("Data e versão do documento:", self.input_data_versao)
         layout.addRow("Número de contrato/ordem de serviço:", self.input_num_contrato)
-
         return widget
 
     def _criar_aba_escopo(self):
-        """Cria o widget e os campos para a Aba 2: Escopo e Premissas."""
         widget = QWidget()
         layout = QFormLayout(widget)
         layout.setSpacing(15)
-
-        # Para textos longos, usamos QTextEdit em vez de QLineEdit
         self.text_objetivos = QTextEdit()
         self.text_limites = QTextEdit()
         self.text_premissas = QTextEdit()
         self.text_interfaces = QTextEdit()
-        
         layout.addRow("Objetivos do projeto:", self.text_objetivos)
         layout.addRow("Limites de fornecimento:", self.text_limites)
         layout.addRow("Premissas e restrições técnicas:", self.text_premissas)
         layout.addRow("Interfaces com outras disciplinas:", self.text_interfaces)
-
         return widget
 
     def _criar_aba_lista_documentos(self):
-        """Cria o widget e os campos para a Aba 3: Lista de Documentos do Projeto."""
         widget = QWidget()
-        # Usamos um QVBoxLayout para poder ter uma tabela e botões
         layout = QVBoxLayout(widget)
-
-        # Tabela para a lista de documentos
         self.tabela_documentos_projeto = QTableWidget()
         self.tabela_documentos_projeto.setColumnCount(6)
-        self.tabela_documentos_projeto.setHorizontalHeaderLabels([
-            "Título", "Código/Nº", "Revisão", "Data", "Autor", "Status"
-        ])
+        self.tabela_documentos_projeto.setHorizontalHeaderLabels(["Título", "Código/Nº", "Revisão", "Data", "Autor", "Status"])
         self.tabela_documentos_projeto.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-
-        # Botões para adicionar/remover linhas da tabela (a lógica virá depois)
         layout_botoes = QHBoxLayout()
         self.btn_add_doc = QPushButton("➕ Adicionar Documento")
         self.btn_rem_doc = QPushButton("➖ Remover Selecionado")
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_doc)
         layout_botoes.addWidget(self.btn_rem_doc)
-
         layout.addWidget(self.tabela_documentos_projeto)
         layout.addLayout(layout_botoes)
-
         return widget
 
-
-
     def _criar_aba_diagramas(self):
-        """Cria o widget e os campos para a Aba 4: Diagramas e Desenhos."""
         widget = QWidget()
         layout = QFormLayout(widget)
         layout.setSpacing(15)
-    
-        # Para estas secções, um campo de texto geral para notas é suficiente por agora.
-        # A funcionalidade de anexar os ficheiros virá na tela de "Anexos".
         self.text_diagramas_notas = QTextEdit()
         self.text_diagramas_notas.setPlaceholderText("Descreva os diagramas principais do projeto, como P&ID, unifilares elétricos, diagramas de malha, rede, etc.")
-        
         layout.addRow("Descrição e Notas sobre os Diagramas:", self.text_diagramas_notas)
         return widget
-    
+
     def _criar_aba_lista_instrumentos(self):
-        """Cria o widget para a Aba 5: Lista de Instrumentos e Equipamentos."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-    
         self.tabela_instrumentos = QTableWidget()
         self.tabela_instrumentos.setColumnCount(6)
         self.tabela_instrumentos.setHorizontalHeaderLabels(["Tag", "Descrição", "Fabricante/Modelo", "Faixa", "Sinal", "Localização"])
         self.tabela_instrumentos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    
         layout_botoes = QHBoxLayout()
         self.btn_add_instrumento = QPushButton("➕ Adicionar Instrumento")
         self.btn_rem_instrumento = QPushButton("➖ Remover Selecionado")
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_instrumento)
         layout_botoes.addWidget(self.btn_rem_instrumento)
-    
         layout.addWidget(self.tabela_instrumentos)
         layout.addLayout(layout_botoes)
         return widget
-    
+
     def _criar_aba_programacao(self):
-        """Cria o widget para a Aba 7: Programação e Lógica de Controle."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-    
         self.tabela_programacao = QTableWidget()
         self.tabela_programacao.setColumnCount(2)
         self.tabela_programacao.setHorizontalHeaderLabels(["Ficheiro (Backup/Print do Programa)", "Descrição Funcional/Comentários"])
         self.tabela_programacao.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tabela_programacao.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-    
         layout_botoes = QHBoxLayout()
         self.btn_add_programa = QPushButton("➕ Adicionar Programa")
         self.btn_rem_programa = QPushButton("➖ Remover Selecionado")
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_programa)
         layout_botoes.addWidget(self.btn_rem_programa)
-    
         layout.addWidget(self.tabela_programacao)
         layout.addLayout(layout_botoes)
         return widget
-    
+
     def _criar_aba_testes(self):
-        """Cria o widget para a Aba 8: Testes e Comissionamento."""
         widget = QWidget()
         layout = QFormLayout(widget)
         layout.setSpacing(15)
-    
         self.text_procedimentos_testes = QTextEdit()
         self.text_relatorios_testes = QTextEdit()
         self.text_nao_conformidades = QTextEdit()
-    
         layout.addRow("Procedimentos (FAT/SAT) e Checklists:", self.text_procedimentos_testes)
         layout.addRow("Relatórios de testes com resultados:", self.text_relatorios_testes)
         layout.addRow("Registro de não conformidades:", self.text_nao_conformidades)
         return widget
-    
+
     def _criar_aba_operacao(self):
-        """Cria o widget para a Aba 9: Operação e Manutenção, com escolha de tipo."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
-        # Grupo de Radio Buttons para a escolha
         self.radio_texto_manual = QRadioButton("Escrever Manualmente")
         self.radio_pdf_manual = QRadioButton("Anexar PDF do Manual de Operação")
-        
         layout_escolha = QHBoxLayout()
         layout_escolha.addWidget(self.radio_texto_manual)
         layout_escolha.addWidget(self.radio_pdf_manual)
         layout_escolha.addStretch(1)
-        
-        # Widget para a entrada de texto
         self.text_manual_operacao = QTextEdit()
-        
-        # Widgets para a seleção de ficheiro
         self.widget_selecao_pdf = QWidget()
         layout_pdf = QHBoxLayout(self.widget_selecao_pdf)
         self.input_caminho_pdf_manual = QLineEdit()
@@ -2053,96 +1995,185 @@ class DocumentacaoWidget(QWidget):
         self.btn_procurar_pdf_manual = QPushButton("Procurar...")
         layout_pdf.addWidget(self.input_caminho_pdf_manual)
         layout_pdf.addWidget(self.btn_procurar_pdf_manual)
-        
-        # Lógica para mostrar/esconder
         self.radio_texto_manual.toggled.connect(self.text_manual_operacao.setVisible)
         self.radio_pdf_manual.toggled.connect(self.widget_selecao_pdf.setVisible)
-        
-        # Inicia com a opção de texto selecionada
         self.radio_texto_manual.setChecked(True)
         self.widget_selecao_pdf.hide()
-        
-        # Layout do formulário para os outros campos
         form_layout = QFormLayout()
         form_layout.setSpacing(15)
         self.text_procedimentos_manutencao = QTextEdit()
         self.text_sobressalentes = QTextEdit()
         form_layout.addRow("Procedimentos de calibração/manutenção:", self.text_procedimentos_manutencao)
         form_layout.addRow("Lista de sobressalentes recomendados:", self.text_sobressalentes)
-    
         layout.addLayout(layout_escolha)
         layout.addWidget(self.text_manual_operacao)
         layout.addWidget(self.widget_selecao_pdf)
         layout.addLayout(form_layout)
-        
         return widget
-    
+
     def _criar_aba_treinamento(self):
-        """Cria o widget para a Aba 10: Treinamento."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
         form_layout = QFormLayout()
         self.text_programa_treinamento = QTextEdit()
         form_layout.addRow("Programa e conteúdo aplicado:", self.text_programa_treinamento)
-        
         self.tabela_participantes = QTableWidget()
         self.tabela_participantes.setColumnCount(2)
         self.tabela_participantes.setHorizontalHeaderLabels(["Nome do Participante", "Certificado (Sim/Não)"])
         self.tabela_participantes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-    
         layout_botoes = QHBoxLayout()
         self.btn_add_participante = QPushButton("➕ Adicionar Participante")
         self.btn_rem_participante = QPushButton("➖ Remover Selecionado")
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_participante)
         layout_botoes.addWidget(self.btn_rem_participante)
-    
         layout.addLayout(form_layout)
         layout.addWidget(QLabel("Lista de Participantes:"))
         layout.addWidget(self.tabela_participantes)
         layout.addLayout(layout_botoes)
         return widget
-    
+
     def _criar_aba_as_built(self):
-        """Cria o widget para a Aba 11: Documentos 'As Built'."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-    
         self.tabela_as_built = QTableWidget()
         self.tabela_as_built.setColumnCount(2)
         self.tabela_as_built.setHorizontalHeaderLabels(["Documento 'As Built' (PDF)", "Notas / Detalhes da Atualização"])
         self.tabela_as_built.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tabela_as_built.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-    
         layout_botoes = QHBoxLayout()
         self.btn_add_as_built = QPushButton("➕ Adicionar Documento")
         self.btn_rem_as_built = QPushButton("➖ Remover Selecionado")
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_as_built)
         layout_botoes.addWidget(self.btn_rem_as_built)
-    
         layout.addWidget(self.tabela_as_built)
         layout.addLayout(layout_botoes)
         return widget
-    
+
     def _criar_aba_anexos(self):
-        """Cria o widget para a Aba 12: Anexos."""
         widget = QWidget()
         layout = QFormLayout(widget)
-    
         self.text_anexos = QTextEdit()
         self.text_anexos.setPlaceholderText("Liste aqui os documentos anexos principais, como Datasheets, Manuais, Licenças, Certificados, ARTs, etc. A etapa de upload dos ficheiros será a seguir.")
-        
         layout.addRow("Lista e Descrição dos Anexos:", self.text_anexos)
         return widget
 
+    # ==============================================================================
+    # MÉTODOS DE LÓGICA E NAVEGAÇÃO
+    # ==============================================================================
+    
+    def _capturar_dados_do_formulario(self):
+        """Método auxiliar que lê os dados de todas as abas e retorna um dicionário."""
+        dados_finais = {}
+        
+        # Aba 1
+        dados_finais['identificacao_projeto'] = { "nome_projeto": self.input_nome_projeto.text(), "cliente": self.input_cliente.text(), "local_instalacao": self.input_local_instalacao.text(), "empresa_responsavel": self.input_empresa_responsavel.text(), "data_versao": self.input_data_versao.text(), "num_contrato": self.input_num_contrato.text() }
+        # Aba 2
+        dados_finais['escopo_premissas'] = { "objetivos": self.text_objetivos.toPlainText(), "limites_fornecimento": self.text_limites.toPlainText(), "premissas": self.text_premissas.toPlainText(), "interfaces": self.text_interfaces.toPlainText() }
+        # Aba 3
+        lista_docs_data = []
+        for linha in range(self.tabela_documentos_projeto.rowCount()):
+            lista_docs_data.append({ "titulo": self.tabela_documentos_projeto.item(linha, 0).text() if self.tabela_documentos_projeto.item(linha, 0) else "", "codigo": self.tabela_documentos_projeto.item(linha, 1).text() if self.tabela_documentos_projeto.item(linha, 1) else "", "revisao": self.tabela_documentos_projeto.item(linha, 2).text() if self.tabela_documentos_projeto.item(linha, 2) else "", "data": self.tabela_documentos_projeto.item(linha, 3).text() if self.tabela_documentos_projeto.item(linha, 3) else "", "autor": self.tabela_documentos_projeto.item(linha, 4).text() if self.tabela_documentos_projeto.item(linha, 4) else "", "status": self.tabela_documentos_projeto.item(linha, 5).text() if self.tabela_documentos_projeto.item(linha, 5) else "" })
+        dados_finais['lista_documentos_projeto'] = lista_docs_data
+        # Aba 4
+        dados_finais['diagramas_desenhos'] = {"notas": self.text_diagramas_notas.toPlainText()}
+        # Aba 5
+        lista_instrumentos_data = []
+        for linha in range(self.tabela_instrumentos.rowCount()):
+            lista_instrumentos_data.append({ "tag": self.tabela_instrumentos.item(linha, 0).text() if self.tabela_instrumentos.item(linha, 0) else "", "descricao": self.tabela_instrumentos.item(linha, 1).text() if self.tabela_instrumentos.item(linha, 1) else "", "fabricante_modelo": self.tabela_instrumentos.item(linha, 2).text() if self.tabela_instrumentos.item(linha, 2) else "", "faixa": self.tabela_instrumentos.item(linha, 3).text() if self.tabela_instrumentos.item(linha, 3) else "", "sinal": self.tabela_instrumentos.item(linha, 4).text() if self.tabela_instrumentos.item(linha, 4) else "", "localizacao": self.tabela_instrumentos.item(linha, 5).text() if self.tabela_instrumentos.item(linha, 5) else "" })
+        dados_finais['lista_instrumentos'] = lista_instrumentos_data
+        # Aba 7
+        lista_programas_data = []
+        for linha in range(self.tabela_programacao.rowCount()):
+            lista_programas_data.append({ "ficheiro": self.tabela_programacao.item(linha, 0).text() if self.tabela_programacao.item(linha, 0) else "", "descricao": self.tabela_programacao.item(linha, 1).text() if self.tabela_programacao.item(linha, 1) else "" })
+        dados_finais['programacao_logica'] = lista_programas_data
+        # Aba 8
+        dados_finais['testes_comissionamento'] = { "procedimentos": self.text_procedimentos_testes.toPlainText(), "relatorios": self.text_relatorios_testes.toPlainText(), "nao_conformidades": self.text_nao_conformidades.toPlainText() }
+        # Aba 9
+        dados_operacao = { "procedimentos_manutencao": self.text_procedimentos_manutencao.toPlainText(), "sobressalentes": self.text_sobressalentes.toPlainText() }
+        if self.radio_texto_manual.isChecked():
+            dados_operacao["manual_tipo"] = "texto"
+            dados_operacao["manual_conteudo"] = self.text_manual_operacao.toPlainText()
+        else:
+            dados_operacao["manual_tipo"] = "pdf"
+            dados_operacao["manual_conteudo"] = self.input_caminho_pdf_manual.text()
+        dados_finais['operacao_manutencao'] = dados_operacao
+        # Aba 10
+        lista_participantes_data = []
+        for linha in range(self.tabela_participantes.rowCount()):
+            lista_participantes_data.append({ "nome": self.tabela_participantes.item(linha, 0).text() if self.tabela_participantes.item(linha, 0) else "", "certificado": self.tabela_participantes.item(linha, 1).text() if self.tabela_participantes.item(linha, 1) else "" })
+        dados_finais['treinamento'] = { "programa": self.text_programa_treinamento.toPlainText(), "participantes": lista_participantes_data }
+        # Aba 11
+        lista_as_built_data = []
+        for linha in range(self.tabela_as_built.rowCount()):
+            lista_as_built_data.append({ "documento": self.tabela_as_built.item(linha, 0).text() if self.tabela_as_built.item(linha, 0) else "", "notas": self.tabela_as_built.item(linha, 1).text() if self.tabela_as_built.item(linha, 1) else "" })
+        dados_finais['documentos_as_built'] = lista_as_built_data
+        # Aba 12
+        dados_finais['anexos'] = {"descricao": self.text_anexos.toPlainText()}
+        return dados_finais
 
+    def avancar_para_anexos(self):
+        """Lê os dados do formulário, guarda-os e muda para a tela de anexos."""
+        try:
+            self.dados_formulario_capturados = self._capturar_dados_do_formulario()
+            print("--- DADOS CAPTURADOS ---")
+            print(json.dumps(self.dados_formulario_capturados, indent=4, ensure_ascii=False))
+            self.stacked_widget_interno.setCurrentWidget(self.widget_anexos)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro ao Capturar Dados", f"Ocorreu um erro ao ler os dados do formulário: {e}")
+            traceback.print_exc()
+
+    def voltar_para_formulario(self):
+        """Muda a visualização de volta para o formulário de abas."""
+        self.stacked_widget_interno.setCurrentWidget(self.widget_formulario)
+
+    def iniciar_geracao_documento(self, lista_ficheiros_anexos):
+        """O passo final! Junta tudo e inicia a chamada à API para gerar o documento."""
+        print(f"A iniciar geração com {len(lista_ficheiros_anexos)} anexos.")
+        msg_box = QMessageBox(QMessageBox.Icon.Information, "Aguarde", "A gerar o documento no servidor...", buttons=QMessageBox.StandardButton.NoButton, parent=self)
+        msg_box.show()
+        QApplication.processEvents()
+        dados_formulario_json_str = json.dumps(self.dados_formulario_capturados)
+        files_to_upload = []
+        for path in lista_ficheiros_anexos:
+            try:
+                files_to_upload.append(('anexos', (os.path.basename(path), open(path, 'rb'), 'application/pdf')))
+            except Exception as e:
+                msg_box.close()
+                QMessageBox.critical(self, "Erro de Ficheiro", f"Não foi possível ler o ficheiro: {os.path.basename(path)}\n\n{e}")
+                return
+        self.thread_geracao = QThread()
+        self.worker_geracao = ApiWorker("post", f"/api/servicos/{self.servico_id}/documentos", 
+                                        json_data={'dados_formulario': dados_formulario_json_str}, 
+                                        files=files_to_upload)
+        self.worker_geracao.moveToThread(self.thread_geracao)
+        self.thread_geracao.started.connect(self.worker_geracao.run)
+        self.worker_geracao.finished.connect(lambda s, d: self.on_geracao_finalizada(s, d, msg_box))
+        self.worker_geracao.finished.connect(self.thread_geracao.quit)
+        self.worker_geracao.finished.connect(self.worker_geracao.deleteLater)
+        self.thread_geracao.finished.connect(self.thread_geracao.deleteLater)
+        self.thread_geracao.start()
+
+    # ==============================================================================
+    # MÉTODOS DE CALLBACK (Respostas da API)
+    # ==============================================================================
+    def on_geracao_finalizada(self, status_code, data, msg_box):
+        msg_box.close()
+        # Fecha os ficheiros abertos para o upload
+        if hasattr(self.worker_geracao, 'files') and self.worker_geracao.files:
+            for _, file_tuple in self.worker_geracao.files:
+                file_tuple[1].close()
+
+        if status_code == 201:
+            QMessageBox.information(self, "Sucesso!", "Documento gerado com sucesso!")
+            self.carregar_historico()
+            self.voltar_para_formulario()
+        else:
+            erro = data.get('erro', 'Ocorreu um erro desconhecido no servidor.')
+            QMessageBox.critical(self, "Falha na Geração", f"Não foi possível gerar o documento:\n\n{erro}")
 
     def carregar_historico(self):
-        """Inicia a chamada à API em uma thread para buscar o histórico."""
-        # --- PRINT DE DEPURACAO 6 ---
-        print("--- FRONTEND DEBUG: Dentro de carregar_historico. A iniciar a thread da API. ---")
         self.lista_historico.clear()
         self.lista_historico.addItem("A carregar histórico do servidor...")
         self.thread = QThread()
@@ -2156,291 +2187,189 @@ class DocumentacaoWidget(QWidget):
         self.thread.start()
 
     def on_carregamento_historico_finished(self, status_code, data):
-        """Callback executado quando a thread da API termina."""
-        
-        # --- PRINT DE DEPURACAO FINAL ---
-        print(f"--- FRONTEND DEBUG (CALLBACK): A função foi chamada com status {status_code}.")
-        print(f"--- FRONTEND DEBUG (CALLBACK): Dados recebidos: {data} ---")
-        
         self.lista_historico.clear()
-        
         if status_code == 200:
             if not data:
-                print("--- FRONTEND DEBUG (CALLBACK): A condição 'if not data' foi VERDADEIRA. A exibir msg de lista vazia. ---")
                 self.lista_historico.addItem("Nenhum documento gerado para este serviço.")
                 return
-
             for doc in data:
-                # Cria o texto para cada item da lista
                 texto_item = f"{doc['data_criacao']} - por {doc['nome_usuario']} - v{doc['versao']}"
                 item = QListWidgetItem(texto_item)
-                
-                # Dica de profissional: guarde o ID do documento no item para uso futuro!
                 item.setData(Qt.UserRole, doc['id'])
-                
                 self.lista_historico.addItem(item)
         else:
             self.lista_historico.addItem("Erro ao carregar histórico.")
             erro = data.get("erro", "Erro desconhecido")
             QMessageBox.warning(self, "Erro de API", f"Não foi possível buscar o histórico: {erro}")
-            
+
     def on_historico_item_clicado(self, item):
-        # """Este método é chamado sempre que um item na lista de histórico é clicado."""
         documento_id = item.data(Qt.UserRole)
         if documento_id is None:
             return
-            
         print(f"Item clicado! ID do documento: {documento_id}. A buscar detalhes na API...")
-        
-        # Inicia a chamada à API em uma thread para buscar os detalhes
         self.thread_detalhes = QThread()
         self.worker_detalhes = ApiWorker("get", f"/api/documentos/{documento_id}")
         self.worker_detalhes.moveToThread(self.thread_detalhes)
-        
         self.thread_detalhes.started.connect(self.worker_detalhes.run)
-        # Conecta o sinal de 'finished' a um NOVO método para preencher o formulário
         self.worker_detalhes.finished.connect(self.on_detalhes_documento_recebidos)
-        
-        # Limpeza da thread
         self.worker_detalhes.finished.connect(self.thread_detalhes.quit)
         self.worker_detalhes.finished.connect(self.worker_detalhes.deleteLater)
         self.thread_detalhes.finished.connect(self.thread_detalhes.deleteLater)
-        
-        self.thread_detalhes.start() 
-        
-        
+        self.thread_detalhes.start()
+
     def on_detalhes_documento_recebidos(self, status_code, data):
-     """
-     Callback que recebe os detalhes de um documento da API e preenche todas as
-     abas do formulário com os dados recebidos.
-     """
-     print(f"Dados do formulário recebidos da API: {data}")
-     
-     if status_code == 200:
-         # --- Limpa todos os campos antes de preencher ---
-         # (Esta parte é opcional, mas boa prática para garantir que não sobra lixo de uma seleção anterior)
-         # Iremos preencher campo a campo abaixo.
- 
-         # --- Aba 1: Identificação do Projeto ---
-         # Primeiro, obtemos o dicionário desta secção. Se não existir, usamos um dict vazio {}.
-         dados_identificacao = data.get('identificacao_projeto', {})
-         self.input_nome_projeto.setText(dados_identificacao.get('nome_projeto', ''))
-         self.input_cliente.setText(dados_identificacao.get('cliente', ''))
-         self.input_local_instalacao.setText(dados_identificacao.get('local_instalacao', ''))
-         self.input_empresa_responsavel.setText(dados_identificacao.get('empresa_responsavel', ''))
-         self.input_data_versao.setText(dados_identificacao.get('data_versao', ''))
-         self.input_num_contrato.setText(dados_identificacao.get('num_contrato', ''))
- 
-         # --- Aba 2: Escopo e Premissas ---
-         dados_escopo = data.get('escopo_premissas', {})
-         self.text_objetivos.setPlainText(dados_escopo.get('objetivos', ''))
-         self.text_limites.setPlainText(dados_escopo.get('limites_fornecimento', ''))
-         self.text_premissas.setPlainText(dados_escopo.get('premissas', ''))
-         self.text_interfaces.setPlainText(dados_escopo.get('interfaces', ''))
- 
-         # --- Aba 3: Lista de Documentos do Projeto ---
-         lista_docs = data.get('lista_documentos_projeto', [])
-         self.tabela_documentos_projeto.setRowCount(0) # Limpa a tabela
-         for doc in lista_docs:
-             linha = self.tabela_documentos_projeto.rowCount()
-             self.tabela_documentos_projeto.insertRow(linha)
-             self.tabela_documentos_projeto.setItem(linha, 0, QTableWidgetItem(doc.get('titulo', '')))
-             self.tabela_documentos_projeto.setItem(linha, 1, QTableWidgetItem(doc.get('codigo', '')))
-             self.tabela_documentos_projeto.setItem(linha, 2, QTableWidgetItem(doc.get('revisao', '')))
-             self.tabela_documentos_projeto.setItem(linha, 3, QTableWidgetItem(doc.get('data', '')))
-             self.tabela_documentos_projeto.setItem(linha, 4, QTableWidgetItem(doc.get('autor', '')))
-             self.tabela_documentos_projeto.setItem(linha, 5, QTableWidgetItem(doc.get('status', '')))
- 
-         # --- Aba 4: Diagramas e Desenhos ---
-         dados_diagramas = data.get('diagramas_desenhos', {})
-         self.text_diagramas_notas.setPlainText(dados_diagramas.get('notas', ''))
- 
-         # --- Aba 5: Lista de Instrumentos e Equipamentos ---
-         lista_instrumentos = data.get('lista_instrumentos', [])
-         self.tabela_instrumentos.setRowCount(0) # Limpa a tabela
-         for inst in lista_instrumentos:
-             linha = self.tabela_instrumentos.rowCount()
-             self.tabela_instrumentos.insertRow(linha)
-             self.tabela_instrumentos.setItem(linha, 0, QTableWidgetItem(inst.get('tag', '')))
-             self.tabela_instrumentos.setItem(linha, 1, QTableWidgetItem(inst.get('descricao', '')))
-             self.tabela_instrumentos.setItem(linha, 2, QTableWidgetItem(inst.get('fabricante_modelo', '')))
-             self.tabela_instrumentos.setItem(linha, 3, QTableWidgetItem(inst.get('faixa', '')))
-             self.tabela_instrumentos.setItem(linha, 4, QTableWidgetItem(inst.get('sinal', '')))
-             self.tabela_instrumentos.setItem(linha, 5, QTableWidgetItem(inst.get('localizacao', '')))
- 
-         # --- Aba 7: Programação e Lógica de Controle ---
-         dados_programacao = data.get('programacao_logica', {})
-         self.text_descricao_funcional.setPlainText(dados_programacao.get('descricao_funcional', ''))
-         self.text_fluxogramas.setPlainText(dados_programacao.get('fluxogramas', ''))
-         self.text_estrutura_db.setPlainText(dados_programacao.get('estrutura_db', ''))
- 
-         # --- Aba 8: Testes e Comissionamento ---
-         dados_testes = data.get('testes_comissionamento', {})
-         self.text_procedimentos_testes.setPlainText(dados_testes.get('procedimentos', ''))
-         self.text_relatorios_testes.setPlainText(dados_testes.get('relatorios', ''))
-         self.text_nao_conformidades.setPlainText(dados_testes.get('nao_conformidades', ''))
- 
-         # --- Aba 9: Operação e Manutenção ---
-         dados_operacao = data.get('operacao_manutencao', {})
-         self.text_manual_operacao.setPlainText(dados_operacao.get('manual', ''))
-         self.text_procedimentos_manutencao.setPlainText(dados_operacao.get('procedimentos', ''))
-         self.text_sobressalentes.setPlainText(dados_operacao.get('sobressalentes', ''))
-         
-         # --- Aba 10: Treinamento ---
-         dados_treinamento = data.get('treinamento', {})
-         self.text_programa_treinamento.setPlainText(dados_treinamento.get('programa', ''))
-         lista_participantes = dados_treinamento.get('participantes', [])
-         self.tabela_participantes.setRowCount(0) # Limpa a tabela
-         for p in lista_participantes:
-             linha = self.tabela_participantes.rowCount()
-             self.tabela_participantes.insertRow(linha)
-             self.tabela_participantes.setItem(linha, 0, QTableWidgetItem(p.get('nome', '')))
-             self.tabela_participantes.setItem(linha, 1, QTableWidgetItem(p.get('certificado', '')))
- 
-         # --- Aba 11: Documentos “As Built” ---
-         dados_as_built = data.get('documentos_as_built', {})
-         self.text_as_built.setPlainText(dados_as_built.get('notas', ''))
- 
-         # --- Aba 12: Anexos ---
-         dados_anexos = data.get('anexos', {})
-         self.text_anexos.setPlainText(dados_anexos.get('descricao', ''))
- 
-         # --- Mensagem final de sucesso ---
-         QMessageBox.information(self, "Sucesso", "Dados do documento carregados no formulário!")
- 
-     else:
-         # Se o status não for 200, exibe uma mensagem de erro
-         QMessageBox.critical(self, "Erro de API", "Não foi possível carregar os detalhes deste documento.")
-         
-         
-    def avancar_para_anexos(self):
-        """
-        Este método é chamado ao clicar em 'Próximo'. Ele lê os dados de todas
-        as abas e monta um único objeto de dicionário.
-        """
-        print("--- A capturar dados do formulário... ---")
-        
-        try:
-            dados_finais = {}
-    
-            # --- Aba 1: Identificação do Projeto ---
-            dados_finais['identificacao_projeto'] = {
-                "nome_projeto": self.input_nome_projeto.text(),
-                "cliente": self.input_cliente.text(),
-                "local_instalacao": self.input_local_instalacao.text(),
-                "empresa_responsavel": self.input_empresa_responsavel.text(),
-                "data_versao": self.input_data_versao.text(),
-                "num_contrato": self.input_num_contrato.text()
-            }
-    
-            # --- Aba 2: Escopo e Premissas ---
-            dados_finais['escopo_premissas'] = {
-                "objetivos": self.text_objetivos.toPlainText(),
-                "limites_fornecimento": self.text_limites.toPlainText(),
-                "premissas": self.text_premissas.toPlainText(),
-                "interfaces": self.text_interfaces.toPlainText()
-            }
-    
-            # --- Aba 3: Lista de Documentos do Projeto ---
-            # O padrão para ler uma tabela: criar uma lista, iterar pelas linhas,
-            # criar um dicionário para cada linha, e adicionar à lista.
-            lista_docs_data = []
-            for linha in range(self.tabela_documentos_projeto.rowCount()):
-                doc_linha = {
-                    "titulo": self.tabela_documentos_projeto.item(linha, 0).text() if self.tabela_documentos_projeto.item(linha, 0) else "",
-                    "codigo": self.tabela_documentos_projeto.item(linha, 1).text() if self.tabela_documentos_projeto.item(linha, 1) else "",
-                    "revisao": self.tabela_documentos_projeto.item(linha, 2).text() if self.tabela_documentos_projeto.item(linha, 2) else "",
-                    "data": self.tabela_documentos_projeto.item(linha, 3).text() if self.tabela_documentos_projeto.item(linha, 3) else "",
-                    "autor": self.tabela_documentos_projeto.item(linha, 4).text() if self.tabela_documentos_projeto.item(linha, 4) else "",
-                    "status": self.tabela_documentos_projeto.item(linha, 5).text() if self.tabela_documentos_projeto.item(linha, 5) else ""
-                }
-                lista_docs_data.append(doc_linha)
-            dados_finais['lista_documentos_projeto'] = lista_docs_data
-    
-            # --- Aba 4: Diagramas e Desenhos ---
-            dados_finais['diagramas_desenhos'] = {"notas": self.text_diagramas_notas.toPlainText()}
-    
-            # --- Aba 5: Dispositivos & Instrumentos ---
-            lista_instrumentos_data = []
-            for linha in range(self.tabela_instrumentos.rowCount()):
-                inst_linha = {
-                    "tag": self.tabela_instrumentos.item(linha, 0).text() if self.tabela_instrumentos.item(linha, 0) else "",
-                    "descricao": self.tabela_instrumentos.item(linha, 1).text() if self.tabela_instrumentos.item(linha, 1) else "",
-                    "fabricante_modelo": self.tabela_instrumentos.item(linha, 2).text() if self.tabela_instrumentos.item(linha, 2) else "",
-                    "faixa": self.tabela_instrumentos.item(linha, 3).text() if self.tabela_instrumentos.item(linha, 3) else "",
-                    "sinal": self.tabela_instrumentos.item(linha, 4).text() if self.tabela_instrumentos.item(linha, 4) else "",
-                    "localizacao": self.tabela_instrumentos.item(linha, 5).text() if self.tabela_instrumentos.item(linha, 5) else ""
-                }
-                lista_instrumentos_data.append(inst_linha)
-            dados_finais['lista_instrumentos'] = lista_instrumentos_data
-            
-            # --- Aba 7: Programação e Lógica de Controle ---
-            lista_programas_data = []
-            for linha in range(self.tabela_programacao.rowCount()):
-                prog_linha = {
-                    "ficheiro": self.tabela_programacao.item(linha, 0).text() if self.tabela_programacao.item(linha, 0) else "",
-                    "descricao": self.tabela_programacao.item(linha, 1).text() if self.tabela_programacao.item(linha, 1) else ""
-                }
-                lista_programas_data.append(prog_linha)
-            dados_finais['programacao_logica'] = lista_programas_data
-    
-            # --- Aba 8: Testes e Comissionamento ---
-            dados_finais['testes_comissionamento'] = {
-                "procedimentos": self.text_procedimentos_testes.toPlainText(),
-                "relatorios": self.text_relatorios_testes.toPlainText(),
-                "nao_conformidades": self.text_nao_conformidades.toPlainText()
-            }
-    
-            # --- Aba 9: Operação e Manutenção ---
-            dados_operacao = {
-                "procedimentos_manutencao": self.text_procedimentos_manutencao.toPlainText(),
-                "sobressalentes": self.text_sobressalentes.toPlainText()
-            }
-            if self.radio_texto_manual.isChecked():
-                dados_operacao["manual_tipo"] = "texto"
-                dados_operacao["manual_conteudo"] = self.text_manual_operacao.toPlainText()
+        if status_code == 200:
+            dados_identificacao = data.get('identificacao_projeto', {})
+            self.input_nome_projeto.setText(dados_identificacao.get('nome_projeto', ''))
+            self.input_cliente.setText(dados_identificacao.get('cliente', ''))
+            self.input_local_instalacao.setText(dados_identificacao.get('local_instalacao', ''))
+            self.input_empresa_responsavel.setText(dados_identificacao.get('empresa_responsavel', ''))
+            self.input_data_versao.setText(dados_identificacao.get('data_versao', ''))
+            self.input_num_contrato.setText(dados_identificacao.get('num_contrato', ''))
+            dados_escopo = data.get('escopo_premissas', {})
+            self.text_objetivos.setPlainText(dados_escopo.get('objetivos', ''))
+            self.text_limites.setPlainText(dados_escopo.get('limites_fornecimento', ''))
+            self.text_premissas.setPlainText(dados_escopo.get('premissas', ''))
+            self.text_interfaces.setPlainText(dados_escopo.get('interfaces', ''))
+            lista_docs = data.get('lista_documentos_projeto', [])
+            self.tabela_documentos_projeto.setRowCount(0)
+            for doc in lista_docs:
+                linha = self.tabela_documentos_projeto.rowCount()
+                self.tabela_documentos_projeto.insertRow(linha)
+                self.tabela_documentos_projeto.setItem(linha, 0, QTableWidgetItem(doc.get('titulo', '')))
+                self.tabela_documentos_projeto.setItem(linha, 1, QTableWidgetItem(doc.get('codigo', '')))
+                self.tabela_documentos_projeto.setItem(linha, 2, QTableWidgetItem(doc.get('revisao', '')))
+                self.tabela_documentos_projeto.setItem(linha, 3, QTableWidgetItem(doc.get('data', '')))
+                self.tabela_documentos_projeto.setItem(linha, 4, QTableWidgetItem(doc.get('autor', '')))
+                self.tabela_documentos_projeto.setItem(linha, 5, QTableWidgetItem(doc.get('status', '')))
+            dados_diagramas = data.get('diagramas_desenhos', {})
+            self.text_diagramas_notas.setPlainText(dados_diagramas.get('notas', ''))
+            lista_instrumentos = data.get('lista_instrumentos', [])
+            self.tabela_instrumentos.setRowCount(0)
+            for inst in lista_instrumentos:
+                linha = self.tabela_instrumentos.rowCount()
+                self.tabela_instrumentos.insertRow(linha)
+                self.tabela_instrumentos.setItem(linha, 0, QTableWidgetItem(inst.get('tag', '')))
+                self.tabela_instrumentos.setItem(linha, 1, QTableWidgetItem(inst.get('descricao', '')))
+                self.tabela_instrumentos.setItem(linha, 2, QTableWidgetItem(inst.get('fabricante_modelo', '')))
+                self.tabela_instrumentos.setItem(linha, 3, QTableWidgetItem(inst.get('faixa', '')))
+                self.tabela_instrumentos.setItem(linha, 4, QTableWidgetItem(inst.get('sinal', '')))
+                self.tabela_instrumentos.setItem(linha, 5, QTableWidgetItem(inst.get('localizacao', '')))
+            dados_programacao = data.get('programacao_logica', {})
+            # Lógica para preencher tabela de programação aqui...
+            dados_testes = data.get('testes_comissionamento', {})
+            self.text_procedimentos_testes.setPlainText(dados_testes.get('procedimentos', ''))
+            self.text_relatorios_testes.setPlainText(dados_testes.get('relatorios', ''))
+            self.text_nao_conformidades.setPlainText(dados_testes.get('nao_conformidades', ''))
+            dados_operacao = data.get('operacao_manutencao', {})
+            self.text_procedimentos_manutencao.setPlainText(dados_operacao.get('procedimentos_manutencao', ''))
+            self.text_sobressalentes.setPlainText(dados_operacao.get('sobressalentes', ''))
+            if dados_operacao.get('manual_tipo') == 'pdf':
+                self.radio_pdf_manual.setChecked(True)
+                self.input_caminho_pdf_manual.setText(dados_operacao.get('manual_conteudo', ''))
             else:
-                dados_operacao["manual_tipo"] = "pdf"
-                dados_operacao["manual_conteudo"] = self.input_caminho_pdf_manual.text()
-            dados_finais['operacao_manutencao'] = dados_operacao
-    
-            # --- Aba 10: Treinamento ---
-            lista_participantes_data = []
-            for linha in range(self.tabela_participantes.rowCount()):
-                part_linha = {
-                    "nome": self.tabela_participantes.item(linha, 0).text() if self.tabela_participantes.item(linha, 0) else "",
-                    "certificado": self.tabela_participantes.item(linha, 1).text() if self.tabela_participantes.item(linha, 1) else ""
-                }
-                lista_participantes_data.append(part_linha)
-            dados_finais['treinamento'] = {
-                "programa": self.text_programa_treinamento.toPlainText(),
-                "participantes": lista_participantes_data
+                self.radio_texto_manual.setChecked(True)
+                self.text_manual_operacao.setPlainText(dados_operacao.get('manual_conteudo', ''))
+            dados_treinamento = data.get('treinamento', {})
+            self.text_programa_treinamento.setPlainText(dados_treinamento.get('programa', ''))
+            lista_participantes = dados_treinamento.get('participantes', [])
+            self.tabela_participantes.setRowCount(0)
+            for p in lista_participantes:
+                linha = self.tabela_participantes.rowCount()
+                self.tabela_participantes.insertRow(linha)
+                self.tabela_participantes.setItem(linha, 0, QTableWidgetItem(p.get('nome', '')))
+                self.tabela_participantes.setItem(linha, 1, QTableWidgetItem(p.get('certificado', '')))
+            dados_as_built = data.get('documentos_as_built', {})
+            # Lógica para preencher tabela as_built aqui...
+            dados_anexos = data.get('anexos', {})
+            self.text_anexos.setPlainText(dados_anexos.get('descricao', ''))
+            QMessageBox.information(self, "Sucesso", "Dados do documento carregados no formulário!")
+        else:
+            QMessageBox.critical(self, "Erro de API", "Não foi possível carregar os detalhes deste documento.")
+
+class DropArea(QLabel):
+    """Um QLabel personalizado que aceita ficheiros arrastados e soltos."""
+    filesDropped = Signal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setText("\nArraste e solte os ficheiros PDF dos Anexos aqui\n(até 5 ficheiros)")
+        self.setStyleSheet("""
+            DropArea {
+                border: 2px dashed #888888;
+                border-radius: 8px;
+                font-size: 18px;
+                color: #555555;
             }
-    
-            # --- Aba 11: Documentos "As Built" ---
-            lista_as_built_data = []
-            for linha in range(self.tabela_as_built.rowCount()):
-                as_built_linha = {
-                    "documento": self.tabela_as_built.item(linha, 0).text() if self.tabela_as_built.item(linha, 0) else "",
-                    "notas": self.tabela_as_built.item(linha, 1).text() if self.tabela_as_built.item(linha, 1) else ""
-                }
-                lista_as_built_data.append(as_built_linha)
-            dados_finais['documentos_as_built'] = lista_as_built_data
-    
-            # --- Aba 12: Anexos ---
-            dados_finais['anexos'] = {"descricao": self.text_anexos.toPlainText()}
-    
-            # Para depuração: imprime o JSON completo no terminal
-            print("--- DADOS CAPTURADOS ---")
-            print(json.dumps(dados_finais, indent=4, ensure_ascii=False))
-            print("--------------------------")
-            
-            # TODO: Guardar estes 'dados_finais' e mudar para a tela de anexos
-            QMessageBox.information(self, "Dados Capturados", "Os dados do formulário foram lidos com sucesso! Verifique o terminal.")
-    
-        except Exception as e:
-            QMessageBox.critical(self, "Erro ao Capturar Dados", f"Ocorreu um erro ao ler os dados do formulário: {e}")
-            traceback.print_exc() # Imprime o erro detalhado no terminal
+            DropArea:hover {
+                border-color: #0078d7;
+                background-color: #f0f8ff;
+            }
+        """)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        urls = [url.toLocalFile() for url in event.mimeData().urls()]
+        pdf_files = [url for url in urls if url.lower().endswith('.pdf')]
+        if pdf_files:
+            self.filesDropped.emit(pdf_files)
+
+
+class AnexosWidget(QWidget):
+    """A tela para fazer o upload dos ficheiros de anexo."""
+    # Sinais para comunicar com o widget principal (DocumentacaoWidget)
+    voltar_solicitado = Signal()
+    gerar_documento_solicitado = Signal(list) # Emite a lista final de caminhos de ficheiros
+
+    def __init__(self):
+        super().__init__()
+        self.caminhos_ficheiros = []
+        
+        layout = QVBoxLayout(self)
+        
+        # Área de Drag-and-Drop
+        self.drop_area = DropArea()
+        self.drop_area.filesDropped.connect(self.adicionar_ficheiros)
+        
+        # Lista para exibir os ficheiros adicionados
+        self.lista_ficheiros = QListWidget()
+        
+        # Botões de Ação
+        layout_botoes = QHBoxLayout()
+        btn_voltar = QPushButton("< Voltar ao Formulário")
+        btn_gerar = QPushButton("🚀 Gerar Documento Final")
+        btn_gerar.setObjectName("btnPositive")
+
+        btn_voltar.clicked.connect(self.voltar_solicitado.emit)
+        btn_gerar.clicked.connect(self.on_gerar_clicado)
+
+        layout_botoes.addWidget(btn_voltar)
+        layout_botoes.addStretch(1)
+        layout_botoes.addWidget(btn_gerar)
+        
+        layout.addWidget(self.drop_area, 1) # Ocupa mais espaço
+        layout.addWidget(QLabel("Ficheiros Anexados:"))
+        layout.addWidget(self.lista_ficheiros, 1)
+        layout.addLayout(layout_botoes)
+
+    def adicionar_ficheiros(self, novos_ficheiros):
+        for ficheiro in novos_ficheiros:
+            if ficheiro not in self.caminhos_ficheiros:
+                self.caminhos_ficheiros.append(ficheiro)
+                item = QListWidgetItem(f"📄 {os.path.basename(ficheiro)}")
+                item.setData(Qt.UserRole, ficheiro) # Guarda o caminho completo
+                self.lista_ficheiros.addItem(item)
+        
+    def on_gerar_clicado(self):
+        # Emite o sinal com a lista de caminhos de ficheiros para o widget pai processar
+        self.gerar_documento_solicitado.emit(self.caminhos_ficheiros)
+
+
     
 # ==============================================================================
 # 5. CLASSE DA JANELA PRINCIPAL
