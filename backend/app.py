@@ -971,72 +971,106 @@ def gerar_novo_documento(servico_id):
     Endpoint final que recebe os dados do formulário e os anexos,
     e gera o documento PDF completo.
     """
-    # --- Passo 1: Receber e Validar os Dados ---
-    if 'dados_formulario' not in request.form:
-        return jsonify({'erro': 'Dados do formulário não encontrados.'}), 400
-    
-    dados_formulario_str = request.form.get('dados_formulario')
-    dados_formulario = json.loads(dados_formulario_str)
-    anexos = request.files.getlist('anexos')
-    id_usuario_logado = get_jwt_identity()
-
-    # Define os caminhos dos ficheiros e pastas
+    # Define os caminhos dos ficheiros temporários no início
     dir_path = os.path.dirname(os.path.realpath(__file__))
     temp_docx_path = os.path.join(dir_path, 'temp_documento.docx')
     temp_pdf_path = os.path.join(dir_path, 'temp_documento.pdf')
-    output_folder = os.path.join(dir_path, 'documentos_gerados')
 
     try:
+        # --- Passo 1: Receber e Validar os Dados ---
+        if 'dados_formulario' not in request.form:
+            return jsonify({'erro': 'Dados do formulário não encontrados.'}), 400
+        
+        dados_formulario_str = request.form.get('dados_formulario')
+        dados_formulario = json.loads(dados_formulario_str)
+        anexos = request.files.getlist('anexos')
+        id_usuario_logado = get_jwt_identity()
+        output_folder = os.path.join(dir_path, 'documentos_gerados')
+
         # --- Passo 2: Calcular a Nova Versão ---
         versao_anterior = db.session.query(db.func.max(DocumentosGerados.versao)).filter_by(servico_id=servico_id).scalar()
         nova_versao = (versao_anterior or 0) + 1
 
         # --- Passo 3: Preencher o Template .docx ---
         doc = Document(os.path.join(dir_path, 'template.docx'))
+
+        # --- 3a. Lógica para substituir todas as TAGS DE TEXTO SIMPLES ---
+        replacements = {}
+        replacements.update(dados_formulario.get('identificacao_projeto', {}))
+        replacements.update(dados_formulario.get('escopo_premissas', {}))
+        replacements.update(dados_formulario.get('diagramas_desenhos', {}))
+        replacements.update(dados_formulario.get('testes_comissionamento', {}))
+        replacements.update(dados_formulario.get('operacao_manutencao', {}))
+        replacements.update(dados_formulario.get('treinamento', {}))
+        replacements.update(dados_formulario.get('documentos_as_built', {}))
+        replacements.update(dados_formulario.get('anexos', {}))
         
-        # Lógica para substituir as tags no texto
-        dados_identificacao = dados_formulario.get('identificacao_projeto', {})
         for p in doc.paragraphs:
-            for key, value in dados_identificacao.items():
+            for key, value in replacements.items():
                 if f'{{{{{key}}}}}' in p.text:
-                    # Usamos 'inline' para manter a formatação do template
                     for run in p.runs:
                         run.text = run.text.replace(f'{{{{{key}}}}}', str(value))
-        
-        # Exemplo de como preencher uma tabela no .docx (para a lista de instrumentos)
-        # Assumindo que a sua tabela no .docx tem 6 colunas
-        if 'lista_instrumentos' in dados_formulario and len(doc.tables) > 0:
-            tabela_instrumentos_docx = doc.tables[0] # Pega na primeira tabela do documento
-            lista_instrumentos_dados = dados_formulario['lista_instrumentos']
-            for instrumento in lista_instrumentos_dados:
-                celulas = tabela_instrumentos_docx.add_row().cells
-                celulas[0].text = instrumento.get('tag', '')
-                celulas[1].text = instrumento.get('descricao', '')
-                celulas[2].text = instrumento.get('fabricante_modelo', '')
-                celulas[3].text = instrumento.get('faixa', '')
-                celulas[4].text = instrumento.get('sinal', '')
-                celulas[5].text = instrumento.get('localizacao', '')
 
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        for key, value in replacements.items():
+                            if f'{{{{{key}}}}}' in p.text:
+                                for run in p.runs:
+                                    run.text = run.text.replace(f'{{{{{key}}}}}', str(value))
+
+        # --- 3b. Lógica para preencher todas as TABELAS DINÂMICAS ---
+        try:
+            # Tabela 0: Lista de Documentos
+            if 'lista_documentos_projeto' in dados_formulario:
+                tabela_docs = doc.tables[0]
+                for item in dados_formulario['lista_documentos_projeto']:
+                    celulas = tabela_docs.add_row().cells
+                    celulas[0].text, celulas[1].text, celulas[2].text, celulas[3].text, celulas[4].text, celulas[5].text = item.get('titulo', ''), item.get('codigo', ''), item.get('revisao', ''), item.get('data', ''), item.get('autor', ''), item.get('status', '')
+
+            # Tabela 1: Instrumentos
+            if 'lista_instrumentos' in dados_formulario:
+                tabela_instrumentos = doc.tables[1]
+                for item in dados_formulario['lista_instrumentos']:
+                    celulas = tabela_instrumentos.add_row().cells
+                    celulas[0].text, celulas[1].text, celulas[2].text, celulas[3].text, celulas[4].text, celulas[5].text = item.get('tag', ''), item.get('descricao', ''), item.get('fabricante_modelo', ''), item.get('faixa', ''), item.get('sinal', ''), item.get('localizacao', '')
+
+            # Tabela 2: Programação
+            if 'programacao_logica' in dados_formulario:
+                tabela_programacao = doc.tables[2]
+                for item in dados_formulario['programacao_logica']:
+                    celulas = tabela_programacao.add_row().cells
+                    celulas[0].text, celulas[1].text = item.get('ficheiro', ''), item.get('descricao', '')
+
+            # Tabela 3: Participantes do Treinamento
+            if 'treinamento' in dados_formulario and 'participantes' in dados_formulario['treinamento']:
+                tabela_participantes = doc.tables[3]
+                for item in dados_formulario['treinamento']['participantes']:
+                    celulas = tabela_participantes.add_row().cells
+                    celulas[0].text, celulas[1].text = item.get('nome', ''), item.get('certificado', '')
+
+            # Tabela 4: As Built
+            if 'documentos_as_built' in dados_formulario:
+                tabela_as_built = doc.tables[4]
+                for item in dados_formulario['documentos_as_built']:
+                    celulas = tabela_as_built.add_row().cells
+                    celulas[0].text, celulas[1].text = item.get('documento', ''), item.get('notas', '')
+        except IndexError:
+            print("AVISO: O número de tabelas no template.docx é menor do que o esperado.")
+        
         doc.save(temp_docx_path)
 
         # --- Passo 4: Converter .docx para .pdf ---
-        # Este comando requer o LibreOffice instalado no servidor
         print("A iniciar conversão para PDF...")
-        comando = [
-            "soffice", # Comando do LibreOffice
-            "--headless", # Executar sem interface gráfica
-            "--convert-to", "pdf",
-            "--outdir", dir_path, # Guardar o PDF na mesma pasta
-            temp_docx_path
-        ]
-        subprocess.run(comando, check=True)
+        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", dir_path, temp_docx_path], check=True)
         print("Conversão para PDF concluída.")
 
         # --- Passo 5: Unir o PDF Principal com os Anexos ---
         merger = PdfWriter()
-        merger.append(temp_pdf_path) # Adiciona o PDF do template
+        merger.append(temp_pdf_path)
         for anexo in anexos:
-            merger.append(anexo.stream) # Adiciona os PDFs enviados pelo utilizador
+            merger.append(anexo.stream)
         
         # --- Passo 6: Salvar o PDF Final ---
         nome_pdf_final = f"servico_{servico_id}_v{nova_versao}.pdf"
@@ -1056,11 +1090,12 @@ def gerar_novo_documento(servico_id):
         db.session.add(novo_documento)
         db.session.commit()
 
+        # --- Passo 8: Retornar Sucesso ---
         return jsonify({'mensagem': 'Documento gerado com sucesso!', 'caminho_download': caminho_pdf_final_completo}), 201
 
     except Exception as e:
         db.session.rollback()
-        traceback.print_exc() # Imprime o erro detalhado no terminal do Flask
+        traceback.print_exc()
         return jsonify({'erro': str(e)}), 500
     
     finally:

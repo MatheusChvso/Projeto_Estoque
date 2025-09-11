@@ -131,13 +131,14 @@ class ApiWorker(QObject):
     # Sinal que será emitido com o resultado: (status_code, dados_json)
     finished = Signal(int, object)
 
-    def __init__(self, method, endpoint, params=None, json_data=None, files=None):
+    def __init__(self, method, endpoint, params=None, json_data=None, files=None, form_data=None):
         super().__init__()
         self.method = method
         self.endpoint = endpoint
         self.params = params
         self.json_data = json_data
         self.files = files
+        self.form_data = form_data
 
     def run(self):
         # --- PRINT DE DEPURACAO 1 ---
@@ -153,7 +154,7 @@ class ApiWorker(QObject):
         try:
             response = requests.request(
                 self.method, url, headers=headers, params=self.params, 
-                json=self.json_data, files=self.files, timeout=15
+                files=self.files,  data=self.form_data, timeout=15
             )
             # --- PRINT DE DEPURACAO 3 ---
             print(f"--- FRONTEND DEBUG: Resposta recebida com status: {response.status_code} ---")
@@ -1906,18 +1907,33 @@ class DocumentacaoWidget(QWidget):
         return widget
 
     def _criar_aba_lista_documentos(self):
+        
         widget = QWidget()
         layout = QVBoxLayout(widget)
         self.tabela_documentos_projeto = QTableWidget()
         self.tabela_documentos_projeto.setColumnCount(6)
         self.tabela_documentos_projeto.setHorizontalHeaderLabels(["Título", "Código/Nº", "Revisão", "Data", "Autor", "Status"])
         self.tabela_documentos_projeto.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # --- Lógica dos Botões ---
+        def adicionar_linha_documento():
+            linha = self.tabela_documentos_projeto.rowCount()
+            self.tabela_documentos_projeto.insertRow(linha)
+    
+        def remover_linha_documento():
+            linha_selecionada = self.tabela_documentos_projeto.currentRow()
+            if linha_selecionada >= 0:
+                self.tabela_documentos_projeto.removeRow(linha_selecionada)
+    
         layout_botoes = QHBoxLayout()
         self.btn_add_doc = QPushButton("➕ Adicionar Documento")
         self.btn_rem_doc = QPushButton("➖ Remover Selecionado")
+        self.btn_add_doc.clicked.connect(adicionar_linha_documento)
+        self.btn_rem_doc.clicked.connect(remover_linha_documento)
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_doc)
         layout_botoes.addWidget(self.btn_rem_doc)
+    
         layout.addWidget(self.tabela_documentos_projeto)
         layout.addLayout(layout_botoes)
         return widget
@@ -1938,17 +1954,32 @@ class DocumentacaoWidget(QWidget):
         self.tabela_instrumentos.setColumnCount(6)
         self.tabela_instrumentos.setHorizontalHeaderLabels(["Tag", "Descrição", "Fabricante/Modelo", "Faixa", "Sinal", "Localização"])
         self.tabela_instrumentos.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # --- Lógica dos Botões ---
+        def adicionar_linha_instrumento():
+            linha = self.tabela_instrumentos.rowCount()
+            self.tabela_instrumentos.insertRow(linha)
+    
+        def remover_linha_instrumento():
+            linha_selecionada = self.tabela_instrumentos.currentRow()
+            if linha_selecionada >= 0:
+                self.tabela_instrumentos.removeRow(linha_selecionada)
+    
         layout_botoes = QHBoxLayout()
         self.btn_add_instrumento = QPushButton("➕ Adicionar Instrumento")
         self.btn_rem_instrumento = QPushButton("➖ Remover Selecionado")
+        self.btn_add_instrumento.clicked.connect(adicionar_linha_instrumento)
+        self.btn_rem_instrumento.clicked.connect(remover_linha_instrumento)
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_instrumento)
         layout_botoes.addWidget(self.btn_rem_instrumento)
+    
         layout.addWidget(self.tabela_instrumentos)
         layout.addLayout(layout_botoes)
         return widget
 
     def _criar_aba_programacao(self):
+        
         widget = QWidget()
         layout = QVBoxLayout(widget)
         self.tabela_programacao = QTableWidget()
@@ -1956,12 +1987,26 @@ class DocumentacaoWidget(QWidget):
         self.tabela_programacao.setHorizontalHeaderLabels(["Ficheiro (Backup/Print do Programa)", "Descrição Funcional/Comentários"])
         self.tabela_programacao.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tabela_programacao.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        # --- Lógica dos Botões ---
+        def adicionar_linha_programa():
+            linha = self.tabela_programacao.rowCount()
+            self.tabela_programacao.insertRow(linha)
+    
+        def remover_linha_programa():
+            linha_selecionada = self.tabela_programacao.currentRow()
+            if linha_selecionada >= 0:
+                self.tabela_programacao.removeRow(linha_selecionada)
+    
         layout_botoes = QHBoxLayout()
         self.btn_add_programa = QPushButton("➕ Adicionar Programa")
         self.btn_rem_programa = QPushButton("➖ Remover Selecionado")
+        self.btn_add_programa.clicked.connect(adicionar_linha_programa)
+        self.btn_rem_programa.clicked.connect(remover_linha_programa)
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_programa)
         layout_botoes.addWidget(self.btn_rem_programa)
+        
         layout.addWidget(self.tabela_programacao)
         layout.addLayout(layout_botoes)
         return widget
@@ -2017,16 +2062,31 @@ class DocumentacaoWidget(QWidget):
         form_layout = QFormLayout()
         self.text_programa_treinamento = QTextEdit()
         form_layout.addRow("Programa e conteúdo aplicado:", self.text_programa_treinamento)
+        
         self.tabela_participantes = QTableWidget()
         self.tabela_participantes.setColumnCount(2)
         self.tabela_participantes.setHorizontalHeaderLabels(["Nome do Participante", "Certificado (Sim/Não)"])
         self.tabela_participantes.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        # --- Lógica dos Botões ---
+        def adicionar_linha_participante():
+            linha = self.tabela_participantes.rowCount()
+            self.tabela_participantes.insertRow(linha)
+    
+        def remover_linha_participante():
+            linha_selecionada = self.tabela_participantes.currentRow()
+            if linha_selecionada >= 0:
+                self.tabela_participantes.removeRow(linha_selecionada)
+    
         layout_botoes = QHBoxLayout()
         self.btn_add_participante = QPushButton("➕ Adicionar Participante")
         self.btn_rem_participante = QPushButton("➖ Remover Selecionado")
+        self.btn_add_participante.clicked.connect(adicionar_linha_participante)
+        self.btn_rem_participante.clicked.connect(remover_linha_participante)
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_participante)
         layout_botoes.addWidget(self.btn_rem_participante)
+    
         layout.addLayout(form_layout)
         layout.addWidget(QLabel("Lista de Participantes:"))
         layout.addWidget(self.tabela_participantes)
@@ -2041,12 +2101,26 @@ class DocumentacaoWidget(QWidget):
         self.tabela_as_built.setHorizontalHeaderLabels(["Documento 'As Built' (PDF)", "Notas / Detalhes da Atualização"])
         self.tabela_as_built.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.tabela_as_built.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        
+        # --- Lógica dos Botões ---
+        def adicionar_linha_as_built():
+            linha = self.tabela_as_built.rowCount()
+            self.tabela_as_built.insertRow(linha)
+    
+        def remover_linha_as_built():
+            linha_selecionada = self.tabela_as_built.currentRow()
+            if linha_selecionada >= 0:
+                self.tabela_as_built.removeRow(linha_selecionada)
+    
         layout_botoes = QHBoxLayout()
         self.btn_add_as_built = QPushButton("➕ Adicionar Documento")
         self.btn_rem_as_built = QPushButton("➖ Remover Selecionado")
+        self.btn_add_as_built.clicked.connect(adicionar_linha_as_built)
+        self.btn_rem_as_built.clicked.connect(remover_linha_as_built)
         layout_botoes.addStretch(1)
         layout_botoes.addWidget(self.btn_add_as_built)
         layout_botoes.addWidget(self.btn_rem_as_built)
+        
         layout.addWidget(self.tabela_as_built)
         layout.addLayout(layout_botoes)
         return widget
@@ -2129,27 +2203,39 @@ class DocumentacaoWidget(QWidget):
         self.stacked_widget_interno.setCurrentWidget(self.widget_formulario)
 
     def iniciar_geracao_documento(self, lista_ficheiros_anexos):
-        """O passo final! Junta tudo e inicia a chamada à API para gerar o documento."""
-        print(f"A iniciar geração com {len(lista_ficheiros_anexos)} anexos.")
+        """
+        O passo final! Junta tudo e inicia a chamada à API com o novo worker especializado.
+        """
         msg_box = QMessageBox(QMessageBox.Icon.Information, "Aguarde", "A gerar o documento no servidor...", buttons=QMessageBox.StandardButton.NoButton, parent=self)
         msg_box.show()
         QApplication.processEvents()
+    
         dados_formulario_json_str = json.dumps(self.dados_formulario_capturados)
+        
         files_to_upload = []
         for path in lista_ficheiros_anexos:
             try:
-                files_to_upload.append(('anexos', (os.path.basename(path), open(path, 'rb'), 'application/pdf')))
+                files_to_upload.append(
+                    ('anexos', (os.path.basename(path), open(path, 'rb'), 'application/pdf'))
+                )
             except Exception as e:
                 msg_box.close()
                 QMessageBox.critical(self, "Erro de Ficheiro", f"Não foi possível ler o ficheiro: {os.path.basename(path)}\n\n{e}")
                 return
+    
+        # Usamos o novo worker especializado em vez do ApiWorker genérico
         self.thread_geracao = QThread()
-        self.worker_geracao = ApiWorker("post", f"/api/servicos/{self.servico_id}/documentos", 
-                                        json_data={'dados_formulario': dados_formulario_json_str}, 
-                                        files=files_to_upload)
+        self.worker_geracao = GeracaoDocumentoWorker(
+            servico_id=self.servico_id,
+            form_data={'dados_formulario': dados_formulario_json_str},
+            files_to_upload=files_to_upload
+        )
         self.worker_geracao.moveToThread(self.thread_geracao)
         self.thread_geracao.started.connect(self.worker_geracao.run)
-        self.worker_geracao.finished.connect(lambda s, d: self.on_geracao_finalizada(s, d, msg_box))
+        # Passamos a lista de ficheiros para o callback para que possamos fechá-los
+        self.worker_geracao.finished.connect(
+            lambda s, d: self.on_geracao_finalizada(s, d, msg_box, files_to_upload)
+        )
         self.worker_geracao.finished.connect(self.thread_geracao.quit)
         self.worker_geracao.finished.connect(self.worker_geracao.deleteLater)
         self.thread_geracao.finished.connect(self.thread_geracao.deleteLater)
@@ -2158,20 +2244,27 @@ class DocumentacaoWidget(QWidget):
     # ==============================================================================
     # MÉTODOS DE CALLBACK (Respostas da API)
     # ==============================================================================
-    def on_geracao_finalizada(self, status_code, data, msg_box):
+    def on_geracao_finalizada(self, status_code, data, msg_box, files_opened):
+        """Callback que é executado quando o back-end termina de gerar o documento."""
         msg_box.close()
-        # Fecha os ficheiros abertos para o upload
-        if hasattr(self.worker_geracao, 'files') and self.worker_geracao.files:
-            for _, file_tuple in self.worker_geracao.files:
-                file_tuple[1].close()
-
+    
+        # Importante: Fecha todos os ficheiros que foram abertos para o upload
+        for _, file_tuple in files_opened:
+            file_tuple[1].close()
+    
         if status_code == 201:
             QMessageBox.information(self, "Sucesso!", "Documento gerado com sucesso!")
-            self.carregar_historico()
-            self.voltar_para_formulario()
+            
+            # A SOLUÇÃO ESTÁ AQUI:
+            # Usamos um QTimer.singleShot para agendar as próximas ações em vez de as chamar diretamente.
+            # O '0' significa "execute assim que possível, mas depois dos eventos atuais terminarem".
+            QTimer.singleShot(0, self.carregar_historico)
+            QTimer.singleShot(0, self.voltar_para_formulario)
+            
         else:
             erro = data.get('erro', 'Ocorreu um erro desconhecido no servidor.')
             QMessageBox.critical(self, "Falha na Geração", f"Não foi possível gerar o documento:\n\n{erro}")
+
 
     def carregar_historico(self):
         self.lista_historico.clear()
@@ -2319,6 +2412,36 @@ class DropArea(QLabel):
         if pdf_files:
             self.filesDropped.emit(pdf_files)
 
+
+class GeracaoDocumentoWorker(QObject):  
+    """Um worker especializado apenas para a tarefa de gerar o documento final."""
+    finished = Signal(int, dict)
+
+    def __init__(self, servico_id, form_data, files_to_upload):
+        super().__init__()
+        self.servico_id = servico_id
+        self.form_data = form_data
+        self.files_to_upload = files_to_upload
+
+    def run(self):
+        global access_token, API_BASE_URL
+        headers = {'Authorization': f'Bearer {access_token}'}
+        url = f"{API_BASE_URL}/api/servicos/{self.servico_id}/documentos"
+
+        try:
+            # Esta é a chamada requests mais direta e explícita possível
+            response = requests.post(
+                url, 
+                headers=headers, 
+                data=self.form_data, 
+                files=self.files_to_upload, 
+                timeout=60 # Timeout maior para uploads
+            )
+            data = response.json() if response.content else {}
+            self.finished.emit(response.status_code, data)
+        except Exception as e:
+            traceback.print_exc() # Imprime o erro detalhado no terminal
+            self.finished.emit(-2, {"erro": str(e)})
 
 class AnexosWidget(QWidget):
     """A tela para fazer o upload dos ficheiros de anexo."""
@@ -2654,6 +2777,7 @@ class JanelaPrincipal(QMainWindow):
         
         # Define a nova tela como a tela ativa
         self.stacked_widget.setCurrentWidget(self.tela_documentacao_servico_1)
+
 class SobreDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
