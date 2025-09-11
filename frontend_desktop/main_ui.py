@@ -36,7 +36,7 @@ from config import SERVER_IP
 # ==============================================================================
 access_token = None
 API_BASE_URL = f"http://{SERVER_IP}:5000"
-APP_VERSION = "2.3"
+APP_VERSION = "2.5"
 # --- ADICIONE ESTAS LINHAS DE DEPURACAO AQUI ---
 print("--- INICIANDO APLICAÇÃO ---")
 print(f"--- IP DO SERVIDOR CARREGADO DE CONFIG.PY: '{SERVER_IP}' ---")
@@ -1864,9 +1864,20 @@ class DocumentacaoWidget(QWidget):
         self.lista_historico = QListWidget()
         self.lista_historico.itemClicked.connect(self.on_historico_item_clicado)
 
+
+        # --- NOVO CÓDIGO AQUI ---
+        self.btn_excluir_historico = QPushButton("🗑️ Excluir Selecionado")
+        self.btn_excluir_historico.setObjectName("btnNegative") # Estilo vermelho
+        self.btn_excluir_historico.clicked.connect(self.on_excluir_historico_clicado)
+        
+        # Criamos um layout vertical para o lado direito
+        layout_direita = QVBoxLayout()
+        layout_direita.addWidget(self.lista_historico)
+        layout_direita.addWidget(self.btn_excluir_historico)
+        # --- FIM DO NOVO CÓDIGO ---
         # --- 6. Montagem Final do Layout ---
         self.layout_principal.addWidget(self.stacked_widget_interno, 2)
-        self.layout_principal.addWidget(self.lista_historico, 1)
+        self.layout_principal.addLayout(layout_direita, 1)
 
         # --- 7. Carregamento Inicial dos Dados ---
         self.carregar_historico()
@@ -2133,9 +2144,58 @@ class DocumentacaoWidget(QWidget):
         layout.addRow("Lista e Descrição dos Anexos:", self.text_anexos)
         return widget
 
-    # ==============================================================================
-    # MÉTODOS DE LÓGICA E NAVEGAÇÃO
-    # ==============================================================================
+
+# Em main_ui.py, adicione este método à classe DocumentacaoWidget
+
+    def on_excluir_historico_clicado(self):
+        """
+        Chamado ao clicar no botão para excluir um item do histórico.
+        """
+        # 1. Pega no item atualmente selecionado na lista
+        item_selecionado = self.lista_historico.currentItem()
+        
+        if not item_selecionado:
+            QMessageBox.warning(self, "Seleção", "Por favor, selecione um item do histórico para excluir.")
+            return
+    
+        documento_id = item_selecionado.data(Qt.UserRole)
+        texto_item = item_selecionado.text()
+    
+        # 2. Pede confirmação ao utilizador
+        resposta = QMessageBox.question(self, "Confirmar Exclusão", 
+            f"Tem a certeza de que deseja excluir permanentemente o seguinte documento?\n\n<b>{texto_item}</b>\n\nEsta ação não pode ser desfeita.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    
+        if resposta == QMessageBox.StandardButton.No:
+            return
+    
+        # 3. Inicia a chamada à API DELETE em background
+        self.thread_exclusao = QThread()
+        self.worker_exclusao = ApiWorker("delete", f"/api/documentos/{documento_id}")
+        self.worker_exclusao.moveToThread(self.thread_exclusao)
+        
+        self.thread_exclusao.started.connect(self.worker_exclusao.run)
+        self.worker_exclusao.finished.connect(self.on_exclusao_finalizada)
+        
+        # Padrão de limpeza robusto
+        self.worker_exclusao.finished.connect(self.thread_exclusao.quit)
+        self.worker_exclusao.finished.connect(self.worker_exclusao.deleteLater)
+        self.thread_exclusao.finished.connect(self.thread_exclusao.deleteLater)
+        
+        self.thread_exclusao.start()
+    
+    def on_exclusao_finalizada(self, status_code, data):
+        """Callback que é executado após a tentativa de exclusão na API."""
+        if status_code == 200:
+            QMessageBox.information(self, "Sucesso", data.get('mensagem', 'Item excluído com sucesso!'))
+            # Recarrega a lista para mostrar que o item desapareceu
+            self.carregar_historico()
+        else:
+            erro = data.get('erro', 'Ocorreu um erro desconhecido.')
+            QMessageBox.critical(self, "Falha na Exclusão", f"Não foi possível excluir o item:\n\n{erro}")
+        # ==============================================================================
+        # MÉTODOS DE LÓGICA E NAVEGAÇÃO
+        # ==============================================================================
     
     def _capturar_dados_do_formulario(self):
         """Método auxiliar que lê os dados de todas as abas e retorna um dicionário."""
@@ -2230,12 +2290,10 @@ class DocumentacaoWidget(QWidget):
             form_data={'dados_formulario': dados_formulario_json_str},
             files_to_upload=files_to_upload
         )
-        self.worker_geracao.moveToThread(self.thread_geracao)
         self.thread_geracao.started.connect(self.worker_geracao.run)
-        # Passamos a lista de ficheiros para o callback para que possamos fechá-los
         self.worker_geracao.finished.connect(
             lambda s, d: self.on_geracao_finalizada(s, d, msg_box, files_to_upload)
-        )
+    )
         self.worker_geracao.finished.connect(self.thread_geracao.quit)
         self.worker_geracao.finished.connect(self.worker_geracao.deleteLater)
         self.thread_geracao.finished.connect(self.thread_geracao.deleteLater)
@@ -2257,7 +2315,7 @@ class DocumentacaoWidget(QWidget):
             
             # A SOLUÇÃO ESTÁ AQUI:
             # Usamos um QTimer.singleShot para agendar as próximas ações em vez de as chamar diretamente.
-            # O '0' significa "execute assim que possível, mas depois dos eventos atuais terminarem".
+            # Isto garante que a thread anterior terminou completamente antes de iniciarmos novas operações.
             QTimer.singleShot(0, self.carregar_historico)
             QTimer.singleShot(0, self.voltar_para_formulario)
             
@@ -2267,17 +2325,24 @@ class DocumentacaoWidget(QWidget):
 
 
     def carregar_historico(self):
+        """Inicia a chamada à API em uma thread para buscar o histórico."""
         self.lista_historico.clear()
         self.lista_historico.addItem("A carregar histórico do servidor...")
-        self.thread = QThread()
-        self.worker = ApiWorker("get", f"/api/servicos/{self.servico_id}/documentos")
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.on_carregamento_historico_finished)
-        self.worker.finished.connect(self.thread.quit)
-        self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.thread.start()
+        
+        self.thread_historico = QThread()
+        self.worker_historico = ApiWorker("get", f"/api/servicos/{self.servico_id}/documentos")
+        self.worker_historico.moveToThread(self.thread_historico)
+        
+        # Conexões Corrigidas:
+        self.thread_historico.started.connect(self.worker_historico.run)
+        self.worker_historico.finished.connect(self.on_carregamento_historico_finished) # O nosso callback
+        
+        # Padrão de limpeza robusto:
+        self.worker_historico.finished.connect(self.thread_historico.quit) # 1. Pede à thread para parar
+        self.worker_historico.finished.connect(self.worker_historico.deleteLater) # 2. Agenda o worker para ser apagado PELA SUA PRÓPRIA THREAD
+        self.thread_historico.finished.connect(self.thread_historico.deleteLater) # 3. Agenda a thread para ser apagada SÓ DEPOIS de terminar
+        
+        self.thread_historico.start()
 
     def on_carregamento_historico_finished(self, status_code, data):
         self.lista_historico.clear()
@@ -2296,19 +2361,27 @@ class DocumentacaoWidget(QWidget):
             QMessageBox.warning(self, "Erro de API", f"Não foi possível buscar o histórico: {erro}")
 
     def on_historico_item_clicado(self, item):
-        documento_id = item.data(Qt.UserRole)
-        if documento_id is None:
-            return
-        print(f"Item clicado! ID do documento: {documento_id}. A buscar detalhes na API...")
-        self.thread_detalhes = QThread()
-        self.worker_detalhes = ApiWorker("get", f"/api/documentos/{documento_id}")
-        self.worker_detalhes.moveToThread(self.thread_detalhes)
-        self.thread_detalhes.started.connect(self.worker_detalhes.run)
-        self.worker_detalhes.finished.connect(self.on_detalhes_documento_recebidos)
-        self.worker_detalhes.finished.connect(self.thread_detalhes.quit)
-        self.worker_detalhes.finished.connect(self.worker_detalhes.deleteLater)
-        self.thread_detalhes.finished.connect(self.thread_detalhes.deleteLater)
-        self.thread_detalhes.start()
+       """Este método é chamado sempre que um item na lista de histórico é clicado."""
+       documento_id = item.data(Qt.UserRole)
+       if documento_id is None:
+           return
+           
+       print(f"Item clicado! ID do documento: {documento_id}. A buscar detalhes na API...")
+       
+       self.thread_detalhes = QThread()
+       self.worker_detalhes = ApiWorker("get", f"/api/documentos/{documento_id}")
+       self.worker_detalhes.moveToThread(self.thread_detalhes)
+       
+       # Conexões Corrigidas:
+       self.thread_detalhes.started.connect(self.worker_detalhes.run)
+       self.worker_detalhes.finished.connect(self.on_detalhes_documento_recebidos)
+       
+       # Padrão de limpeza robusto:
+       self.worker_detalhes.finished.connect(self.thread_detalhes.quit)
+       self.worker_detalhes.finished.connect(self.worker_detalhes.deleteLater)
+       self.thread_detalhes.finished.connect(self.thread_detalhes.deleteLater)
+       
+       self.thread_detalhes.start()
 
     def on_detalhes_documento_recebidos(self, status_code, data):
         if status_code == 200:
@@ -2588,7 +2661,7 @@ class JanelaPrincipal(QMainWindow):
             acao_entrada.triggered.connect(self.mostrar_tela_entrada_rapida)
             menu_operacoes.addAction(acao_entrada)
             menu_operacoes.addSeparator() # Adiciona uma linha a separar
-            acao_doc_teste = QAction("TESTE: Documentação Serviço 1", self)
+            acao_doc_teste = QAction("Documentação (Pedro Emo)", self)
             acao_doc_teste.triggered.connect(self.mostrar_tela_documentacao_teste)
             menu_operacoes.addAction(acao_doc_teste)
             acao_saida = QAction("Saída Rápida de Estoque...", self)
@@ -2797,12 +2870,12 @@ class SobreDialog(QDialog):
         self.logo_label.installEventFilter(self)
         info_text = QLabel(
             """
-            <b>Sistema de Gestão de Estoque v2.3</b>
-            <p>Versão 28-08-2025</p>
+            <b>Sistema de Gestão de Estoque v2.3D</b>
+            <p>Versão 11-09-2025 Especial(Gerador de Documento)</p>
             <p>Desenvolvido por Matheus com Google Gemini :D.</p>
             <p>Desenvolvido para controle de estoque na Szm.</p>
             <p><b>Tecnologias:</b> Python, PySide6, Flask, SQLAlchemy.</p>
-            <p>Agradecimentos especiais a Mathias pela colaboração e testes.</p>
+            <p>Versão Especial com Editor de Documentos</p>
             """
         )
         info_text.setAlignment(Qt.AlignmentFlag.AlignCenter)

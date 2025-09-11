@@ -943,26 +943,44 @@ def get_historico_documentos(servico_id):
         return jsonify({'erro': str(e)}), 500
     
     
-@app.route('/api/documentos/<int:documento_id>', methods=['GET'])
+@app.route('/api/documentos/<int:documento_id>', methods=['GET', 'DELETE']) # <-- 1. Aceita ambos os métodos
 @jwt_required()
-def get_dados_documento(documento_id):
+def gerir_documento_por_id(documento_id): # <-- 2. Novo nome unificado
     """
-    Busca os dados de formulário de um documento específico pelo seu ID.
+    Gere um documento específico, seja para obter os seus dados (GET)
+    ou para o excluir (DELETE).
     """
-    try:
-        # .get_or_404() é um atalho útil do Flask-SQLAlchemy.
-        # Ele tenta encontrar o registo pelo ID. Se não encontrar,
-        # ele automaticamente retorna um erro 404 Not Found.
-        documento = DocumentosGerados.query.get_or_404(documento_id)
-        
-        # O campo 'dados_formulario' já está em formato JSON no banco de dados.
-        # O jsonify() irá formatá-lo corretamente para a resposta da API.
-        return jsonify(documento.dados_formulario), 200
+    # --- Lógica do método DELETE ---
+    if request.method == 'DELETE':
+        try:
+            claims = get_jwt()
+            if claims.get('permissao') != 'Administrador':
+                return jsonify({"erro": "Acesso negado: permissão de Administrador necessária."}), 403
 
-    except Exception as e:
-        return jsonify({'erro': str(e)}), 500
+            documento = DocumentosGerados.query.get_or_404(documento_id)
+            caminho_pdf = documento.caminho_pdf_final
+
+            db.session.delete(documento)
+            if os.path.exists(caminho_pdf):
+                os.remove(caminho_pdf)
+
+            db.session.commit()
+            return jsonify({'mensagem': f'Documento v{documento.versao} excluído com sucesso!'}), 200
+
+        except Exception as e:
+            db.session.rollback()
+            traceback.print_exc()
+            return jsonify({'erro': str(e)}), 500
+
+    # --- Lógica do método GET (continua a mesma de antes) ---
+    if request.method == 'GET':
+        try:
+            documento = DocumentosGerados.query.get_or_404(documento_id)
+            return jsonify(documento.dados_formulario), 200
+        except Exception as e:
+            return jsonify({'erro': str(e)}), 500
  
- 
+
  
 @app.route('/api/servicos/<int:servico_id>/documentos', methods=['POST'])
 @jwt_required()
@@ -1104,7 +1122,12 @@ def gerar_novo_documento(servico_id):
             os.remove(temp_docx_path)
         if os.path.exists(temp_pdf_path):
             os.remove(temp_pdf_path)
- 
+            
+            
+            
+# Em app.py, adicione este novo endpoint
+
+
  #==================================================================================================================   
     
     
